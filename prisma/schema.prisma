@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ProviderType {
+  MEGA
+  PCLOUD
+}
+
+enum BackupStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum UploadStatus {
+  UPLOADING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique @db.VarChar(255)
+  passwordHash String        @map("password_hash")
+  role         UserRole      @default(USER)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  
+  sessions     UserSession[]
+  files        File[]
+  uploadJobs   UploadJob[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  deviceName       String?   @map("device_name") @db.VarChar(255)
+  userAgent        String?   @map("user_agent")
+  lastActiveAt     DateTime? @map("last_active_at")
+  expiresAt        DateTime  @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model StorageNode {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String       @db.VarChar(255)
+  provider        ProviderType
+  credentialsJson String       @map("credentials_json")
+  totalSpaceMb    BigInt       @default(0) @map("total_space_mb")
+  usedSpaceMb     BigInt       @default(0) @map("used_space_mb")
+  isActive        Boolean      @default(true) @map("is_active")
+  lastSyncAt      DateTime?    @map("last_sync_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  files          File[]
+
+  @@index([provider])
+  @@index([isActive])
+  @@map("storage_nodes")
+}
+
+model File {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  storageNodeId   String       @map("storage_node_id") @db.Uuid
+  thumbnailFileId String?      @unique @map("thumbnail_file_id") @db.Uuid
+  fileName        String       @map("file_name") @db.VarChar(255)
+  originalName    String       @map("original_name") @db.VarChar(255)
+  providerFileId  String       @unique @map("provider_file_id") @db.VarChar(255)
+  mimeType        String       @map("mime_type") @db.VarChar(255)
+  fileSize        BigInt       @map("file_size")
+  isFavorite      Boolean      @default(false) @map("is_favorite")
+  deletedAt       DateTime?    @map("deleted_at")
+  uploadedAt      DateTime     @default(now()) @map("uploaded_at")
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storageNode     StorageNode  @relation(fields: [storageNodeId], references: [id])
+  
+  thumbnailOf     File?        @relation("FileThumbnail")
+  thumbnail       File?        @relation("FileThumbnail", fields: [thumbnailFileId], references: [id])
+
+  backups         Backup[]
+
+  @@index([userId])
+  @@index([storageNodeId])
+  @@index([uploadedAt(sort: Desc)])
+  @@index([deletedAt])
+  @@index([isFavorite])
+  @@index([userId, deletedAt])
+  @@index([userId, uploadedAt(sort: Desc)])
+  @@index([fileName])
+  @@map("files")
+}
+
+model Backup {
+  id             String       @id @default(uuid()) @db.Uuid
+  fileId         String       @map("file_id") @db.Uuid
+  backupProvider String?      @map("backup_provider") @db.VarChar(50)
+  backupFileId   String?      @map("backup_file_id") @db.VarChar(255)
+  status         BackupStatus
+  errorMessage   String?      @map("error_message")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  file           File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([status])
+  @@map("backups")
+}
+
+model UploadJob {
+  id           String       @id @default(uuid()) @db.Uuid
+  userId       String       @map("user_id") @db.Uuid
+  fileName     String?      @map("file_name") @db.VarChar(255)
+  status       UploadStatus
+  errorMessage String?      @map("error_message")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("upload_jobs")
+}
+
