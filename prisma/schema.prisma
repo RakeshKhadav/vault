@@ -112,6 +112,8 @@ model File {
   @@index([userId, deletedAt])
   @@index([userId, uploadedAt(sort: Desc)])
   @@index([fileName])
+  @@index([userId, deletedAt, originalName])
+  @@index([userId, deletedAt, uploadedAt(sort: Desc)])
   @@map("files")
 }
 
