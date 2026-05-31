@@ -23,21 +23,17 @@ export async function GET(
   try {
     const file = await db.file.findFirst({
       where: { id, userId: user.userId, deletedAt: null },
-      include: { storageNode: true },
+      include: { 
+        storageNode: true,
+        thumbnail: true,
+      },
     })
 
-    if (!file || !file.thumbnailFileId) {
+    if (!file || !file.thumbnail) {
       return new Response(null, { status: 404 })
     }
 
-    // Retrieve the thumbnail record
-    const thumbnail = await db.file.findFirst({
-      where: { id: file.thumbnailFileId },
-    })
-
-    if (!thumbnail) {
-      return new Response(null, { status: 404 })
-    }
+    const thumbnail = file.thumbnail
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
     const stream = await provider.download(file.storageNode.credentialsJson, thumbnail.providerFileId)

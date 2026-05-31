@@ -50,11 +50,11 @@ export default function LoginPage() {
 
   return (
     <main className="auth-container">
-      <div className="auth-card">
+      <div className="auth-sidebar">
         <div className="auth-brand">
-          <div className="brand-logo">🛡️</div>
-          <h1>Welcome back to Vault</h1>
-          <p>Access your personal secure media store</p>
+          <div className="brand-logo">⊙ VAULT</div>
+          <h1>Enter the vault.</h1>
+          <p>A quiet space for your personal memories.</p>
         </div>
 
         {errorMsg && (
@@ -95,7 +95,7 @@ export default function LoginPage() {
           </div>
 
           <button type="submit" className="btn-submit" disabled={isPending}>
-            {isPending ? 'Logging in...' : 'Sign In'}
+            {isPending ? 'Accessing...' : 'Sign In'}
           </button>
         </form>
 
@@ -106,6 +106,30 @@ export default function LoginPage() {
               Create an account
             </Link>
           </p>
+        </div>
+      </div>
+
+      <div className="auth-display">
+        <div className="auth-display-decor">
+          <div className="decor-frame">
+            <div className="decor-inner-frame">
+              <span className="decor-plus">+</span>
+            </div>
+          </div>
+          <div className="decor-metadata">
+            <div className="metadata-line">
+              <span className="label">CATALOGUE</span>
+              <span className="value">NO. 8162</span>
+            </div>
+            <div className="metadata-line">
+              <span className="label">EXPOSURE</span>
+              <span className="value">f/2.8 1/60s ISO 400</span>
+            </div>
+            <div className="metadata-line">
+              <span className="label">PRESERVATION</span>
+              <span className="value">SEALED / SECURE</span>
+            </div>
+          </div>
         </div>
       </div>
     </main>

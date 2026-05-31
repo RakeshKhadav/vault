@@ -150,7 +150,7 @@ export default function AdminStorageNodesPage() {
           <p className="subtitle">Manage external storage accounts and monitor allocations</p>
         </div>
         <button className="btn-add-node" onClick={() => setIsModalOpen(true)}>
-          ➕ Add Storage Node
+          Add Storage Node
         </button>
       </div>
 
@@ -164,7 +164,7 @@ export default function AdminStorageNodesPage() {
         <p className="loading-text">Loading storage nodes...</p>
       ) : nodes.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">🗄️</p>
+          <p className="placeholder-icon">⊙</p>
           <h2>No Storage Nodes Connected</h2>
           <p className="placeholder-description">Add a MEGA or pCloud account as a storage node to start uploading files.</p>
         </div>
@@ -210,10 +210,10 @@ export default function AdminStorageNodesPage() {
 
                 <div className="node-card-actions">
                   <button onClick={() => handleTestConnection(node.id)} className="btn-action test">
-                    🔄 Test Connection
+                    Test Connection
                   </button>
                   <button onClick={() => handleDeleteNode(node.id)} className="btn-action delete">
-                    🗑️ Delete Node
+                    Delete Node
                   </button>
                 </div>
               </div>
@@ -232,9 +232,9 @@ export default function AdminStorageNodesPage() {
             </div>
             <form onSubmit={handleSubmitNode} className="modal-form">
               <div className="form-group">
-                <label htmlFor="nodeName">Friendly Name</label>
+                <label htmlFor="friendlyNodeName">Friendly Name</label>
                 <input
-                  id="nodeName"
+                  id="friendlyNodeName"
                   type="text"
                   placeholder="e.g. Mega Backup Account"
                   value={nodeName}

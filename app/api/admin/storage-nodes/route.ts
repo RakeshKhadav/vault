@@ -79,16 +79,24 @@ export async function POST(req: NextRequest) {
     // Encrypt credentials JSON
     const encryptedCredentials = encrypt(credentialsStr)
 
-    // Get storage info stats
-    const stats = await adapter.getStorageInfo(credentialsStr)
+    // Get storage info stats (non-blocking — defaults to 0 if it fails)
+    let totalSpaceMb = BigInt(0)
+    let usedSpaceMb = BigInt(0)
+    try {
+      const stats = await adapter.getStorageInfo(credentialsStr)
+      totalSpaceMb = BigInt(Math.max(0, stats.totalSpaceMb || 0))
+      usedSpaceMb = BigInt(Math.max(0, stats.usedSpaceMb || 0))
+    } catch (statsErr) {
+      console.warn('Could not fetch storage stats (node will still be created):', statsErr)
+    }
 
     const node = await db.storageNode.create({
       data: {
         name,
         provider,
         credentialsJson: encryptedCredentials,
-        totalSpaceMb: stats.totalSpaceMb,
-        usedSpaceMb: stats.usedSpaceMb,
+        totalSpaceMb,
+        usedSpaceMb,
         isActive: true,
       },
     })

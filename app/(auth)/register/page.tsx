@@ -58,11 +58,11 @@ export default function RegisterPage() {
 
   return (
     <main className="auth-container">
-      <div className="auth-card">
+      <div className="auth-sidebar">
         <div className="auth-brand">
-          <div className="brand-logo">🛡️</div>
-          <h1>Create an account</h1>
-          <p>Get started with your personal secure media store</p>
+          <div className="brand-logo">⊙ VAULT</div>
+          <h1>Create an archive.</h1>
+          <p>Begin preserving your stories and media.</p>
         </div>
 
         {errorMsg && (
@@ -114,7 +114,7 @@ export default function RegisterPage() {
           </div>
 
           <button type="submit" className="btn-submit" disabled={isPending}>
-            {isPending ? 'Registering...' : 'Sign Up'}
+            {isPending ? 'Archiving...' : 'Sign Up'}
           </button>
         </form>
 
@@ -125,6 +125,30 @@ export default function RegisterPage() {
               Sign in
             </Link>
           </p>
+        </div>
+      </div>
+
+      <div className="auth-display">
+        <div className="auth-display-decor">
+          <div className="decor-frame">
+            <div className="decor-inner-frame">
+              <span className="decor-plus">+</span>
+            </div>
+          </div>
+          <div className="decor-metadata">
+            <div className="metadata-line">
+              <span className="label">CATALOGUE</span>
+              <span className="value">NO. 8163</span>
+            </div>
+            <div className="metadata-line">
+              <span className="label">EXPOSURE</span>
+              <span className="value">f/1.4 1/125s ISO 200</span>
+            </div>
+            <div className="metadata-line">
+              <span className="label">PRESERVATION</span>
+              <span className="value">SEALED / SECURE</span>
+            </div>
+          </div>
         </div>
       </div>
     </main>

@@ -26,11 +26,39 @@ export default function FavoritesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [datePreset, setDatePreset] = useState<'anytime' | 'today' | 'week' | 'month' | 'year'>('anytime')
 
   // Fullscreen Viewer State
   const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null)
 
   const observerRef = useRef<IntersectionObserver | null>(null)
+
+  // Apply date preset
+  const applyDatePreset = (preset: 'anytime' | 'today' | 'week' | 'month' | 'year') => {
+    setDatePreset(preset)
+    const now = new Date()
+    
+    if (preset === 'anytime') {
+      setStartDate('')
+      setEndDate('')
+    } else if (preset === 'today') {
+      const todayStr = now.toISOString().split('T')[0]
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+    } else if (preset === 'week') {
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      setStartDate(oneWeekAgo.toISOString().split('T')[0])
+      setEndDate(now.toISOString().split('T')[0])
+    } else if (preset === 'month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      setStartDate(firstDay.toISOString().split('T')[0])
+      setEndDate(now.toISOString().split('T')[0])
+    } else if (preset === 'year') {
+      const firstDayOfYear = new Date(now.getFullYear(), 0, 1)
+      setStartDate(firstDayOfYear.toISOString().split('T')[0])
+      setEndDate(now.toISOString().split('T')[0])
+    }
+  }
 
   // Debounce search query
   useEffect(() => {
@@ -204,7 +232,6 @@ export default function FavoritesPage() {
       {/* Search and Filters Toolbar */}
       <div className="gallery-toolbar">
         <div className="search-wrapper">
-          <span className="search-icon">🔍</span>
           <input
             type="text"
             placeholder="Search favorites..."
@@ -212,51 +239,16 @@ export default function FavoritesPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
           />
-          {searchQuery && (
-            <button className="clear-search-btn" onClick={() => setSearchQuery('')}>
-              ✕
-            </button>
-          )}
         </div>
 
-        <div className="date-filters">
-          <div className="date-input-group">
-            <span className="date-label">From:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="date-picker-input"
-            />
-          </div>
-          <div className="date-input-group">
-            <span className="date-label">To:</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="date-picker-input"
-            />
-          </div>
-          {(startDate || endDate) && (
-            <button
-              className="clear-dates-btn"
-              onClick={() => {
-                setStartDate('')
-                setEndDate('')
-              }}
-            >
-              ✕ Clear
-            </button>
-          )}
-        </div>
+        <div className="toolbar-divider" />
 
         <div className="filter-tabs">
           <button
             className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
             onClick={() => setTypeFilter('all')}
           >
-            All Media
+            All
           </button>
           <button
             className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
@@ -271,30 +263,57 @@ export default function FavoritesPage() {
             Videos
           </button>
         </div>
+
+        <div className="toolbar-divider" />
+
+        <div className="date-presets">
+          {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
+            <button
+              key={preset}
+              className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
+              onClick={() => applyDatePreset(preset)}
+            >
+              {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Media Grid */}
-      {isLoading ? (
+      {isLoading && files.length === 0 ? (
         <div className="gallery-grid">
-          {Array.from({ length: 8 }).map((_, idx) => (
-            <div key={idx} className="media-card skeleton">
-              <div className="skeleton-thumb" />
-              <div className="skeleton-meta" />
-            </div>
-          ))}
+          {Array.from({ length: 12 }).map((_, idx) => {
+            const aspectRatios = ['1/1', '16/9', '4/5', '3/2', '4/3', '1/1', '16/9', '3/2', '4/3', '4/5', '1/1', '3/2']
+            const aspect = aspectRatios[idx % aspectRatios.length]
+            const isVideo = idx % 3 === 0
+            return (
+              <div key={idx} className="media-card skeleton">
+                <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
+                  {isVideo && (
+                    <div className="skeleton-video-play">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="skeleton-meta" />
+              </div>
+            )
+          })}
         </div>
       ) : files.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⭐</p>
-          <h2>No favorites found</h2>
+          <p className="placeholder-icon">⊙</p>
+          <h2>The gallery is quiet.</h2>
           <p className="placeholder-description">
             {searchQuery || typeFilter !== 'all' || startDate || endDate
-              ? 'Try adjusting your filters or search terms.'
-              : 'Items marked as favorite will be listed here.'}
+              ? 'No matching favorited files found in the archive.'
+              : 'Add stars to your favorite memories to collect them in this exhibit.'}
           </p>
         </div>
       ) : (
-        <>
+        <div className={`gallery-grid-wrapper ${isLoading ? 'gallery-updating' : ''}`}>
           <div className="gallery-grid">
             {files.map((file, index) => {
               const isLast = index === files.length - 1
@@ -351,15 +370,28 @@ export default function FavoritesPage() {
                 </div>
               )
             })}
-          </div>
 
-          {isLoadingMore && (
-            <div className="gallery-load-more-loader">
-              <div className="spinner" />
-              <span>Loading more items...</span>
-            </div>
-          )}
-        </>
+            {isLoadingMore && Array.from({ length: 4 }).map((_, idx) => {
+              const aspectRatios = ['1/1', '16/9', '4/3', '3/2']
+              const aspect = aspectRatios[idx % aspectRatios.length]
+              const isVideo = idx % 2 === 0
+              return (
+                <div key={`more-skeleton-${idx}`} className="media-card skeleton">
+                  <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
+                    {isVideo && (
+                      <div className="skeleton-video-play">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="skeleton-meta" />
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {/* Fullscreen Media Viewer Modal */}

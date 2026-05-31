@@ -2,6 +2,8 @@ import { StorageManager } from '../storage/manager'
 import { db } from '../db'
 import { Readable } from 'stream'
 import { MediaProcessor } from '../storage/media'
+import { BackupService } from './backup.service'
+import { decrypt } from '../storage/encryption'
 
 export class StorageService {
   static async uploadFile(userId: string, fileBuffer: Buffer, fileName: string, mimeType: string) {
@@ -9,9 +11,10 @@ export class StorageService {
     // 1. Select the storage node using allocation strategy with size check
     const node = await StorageManager.selectUploadNode(sizeInMb)
     const provider = StorageManager.getProvider(node.provider)
+    const credentialsStr = decrypt(node.credentialsJson)
 
     // 2. Perform upload via provider adapter
-    const uploadResult = await provider.upload(node.credentialsJson, fileBuffer, fileName)
+    const uploadResult = await provider.upload(credentialsStr, fileBuffer, fileName)
 
     // 3. Save original file metadata in database
     const file = await db.file.create({
@@ -40,7 +43,7 @@ export class StorageService {
 
       if (thumbnailBuffer) {
         const thumbName = `thumb-${fileName}.jpg`
-        const thumbUpload = await provider.upload(node.credentialsJson, thumbnailBuffer, thumbName)
+        const thumbUpload = await provider.upload(credentialsStr, thumbnailBuffer, thumbName)
 
         // Save thumbnail as a file record
         const thumbFile = await db.file.create({
@@ -75,6 +78,16 @@ export class StorageService {
       },
     })
 
+    // 6. Queue background backup job if file is an image or video under 1GB
+    const isImage = mimeType.startsWith('image/')
+    const isVideo = mimeType.startsWith('video/')
+    const oneGb = 1024 * 1024 * 1024
+    if (isImage || (isVideo && fileBuffer.length <= oneGb)) {
+      await BackupService.createBackupJob(file.id).catch((err) => {
+        console.error('Failed to create backup job:', err)
+      })
+    }
+
     return file
   }
 
@@ -89,7 +102,8 @@ export class StorageService {
     }
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
-    return provider.download(file.storageNode.credentialsJson, file.providerFileId)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    return provider.download(credentialsStr, file.providerFileId)
   }
 
   static async softDeleteFile(fileId: string, userId: string) {
@@ -137,7 +151,8 @@ export class StorageService {
     }
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
-    await provider.delete(file.storageNode.credentialsJson, file.providerFileId)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    await provider.delete(credentialsStr, file.providerFileId)
 
     // Check if thumbnail exists and delete it as well
     if (file.thumbnailFileId) {
@@ -145,7 +160,7 @@ export class StorageService {
         where: { id: file.thumbnailFileId },
       })
       if (thumb) {
-        await provider.delete(file.storageNode.credentialsJson, thumb.providerFileId).catch(() => {})
+        await provider.delete(credentialsStr, thumb.providerFileId).catch(() => {})
         await db.file.delete({
           where: { id: thumb.id },
         }).catch(() => {})
@@ -173,5 +188,66 @@ export class StorageService {
 
   static async deleteFile(fileId: string, userId: string) {
     return this.permanentlyDeleteFile(fileId, userId)
+  }
+
+  static async getDownloadStreamAdmin(fileId: string) {
+    const file = await db.file.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { storageNode: true },
+    })
+
+    if (!file) {
+      throw new Error('File not found')
+    }
+
+    const provider = StorageManager.getProvider(file.storageNode.provider)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    return provider.download(credentialsStr, file.providerFileId)
+  }
+
+  static async permanentlyDeleteFileAdmin(fileId: string) {
+    const file = await db.file.findFirst({
+      where: { id: fileId },
+      include: { storageNode: true },
+    })
+
+    if (!file) {
+      throw new Error('File not found')
+    }
+
+    const provider = StorageManager.getProvider(file.storageNode.provider)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    await provider.delete(credentialsStr, file.providerFileId)
+
+    // Check if thumbnail exists and delete it as well
+    if (file.thumbnailFileId) {
+      const thumb = await db.file.findFirst({
+        where: { id: file.thumbnailFileId },
+      })
+      if (thumb) {
+        await provider.delete(credentialsStr, thumb.providerFileId).catch(() => {})
+        await db.file.delete({
+          where: { id: thumb.id },
+        }).catch(() => {})
+      }
+    }
+
+    // Delete file metadata permanently
+    await db.file.delete({
+      where: { id: fileId },
+    })
+
+    // Reduce storage node allocation
+    const sizeInMb = Number(file.fileSize) / (1024 * 1024)
+    await db.storageNode.update({
+      where: { id: file.storageNodeId },
+      data: {
+        usedSpaceMb: {
+          decrement: Math.max(1, Math.ceil(sizeInMb)),
+        },
+      },
+    })
+
+    return { success: true }
   }
 }

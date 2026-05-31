@@ -50,8 +50,8 @@ export async function POST(
     await db.storageNode.update({
       where: { id },
       data: {
-        totalSpaceMb: stats.totalSpaceMb,
-        usedSpaceMb: stats.usedSpaceMb,
+        totalSpaceMb: BigInt(Math.max(0, stats.totalSpaceMb || 0)),
+        usedSpaceMb: BigInt(Math.max(0, stats.usedSpaceMb || 0)),
         lastSyncAt: new Date(),
       },
     })

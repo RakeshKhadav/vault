@@ -82,27 +82,41 @@ export default function TrashPage() {
     <div className="page-container">
       <div className="trash-header">
         <p className="trash-warning">
-          ⚠️ Trashed items are preserved on storage nodes. Delete them permanently to free up account space.
+          Archived items here are preserved temporarily on storage nodes. Delete permanently to clear physical sectors.
         </p>
       </div>
 
-      {isLoading ? (
+      {isLoading && files.length === 0 ? (
         <div className="gallery-grid">
-          {Array.from({ length: 4 }).map((_, idx) => (
-            <div key={idx} className="media-card skeleton">
-              <div className="skeleton-thumb" />
-              <div className="skeleton-meta" />
-            </div>
-          ))}
+          {Array.from({ length: 6 }).map((_, idx) => {
+            const aspectRatios = ['1/1', '16/9', '4/3', '3/2', '4/5', '1/1']
+            const aspect = aspectRatios[idx % aspectRatios.length]
+            const isVideo = idx % 3 === 0
+            return (
+              <div key={idx} className="media-card skeleton">
+                <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
+                  {isVideo && (
+                    <div className="skeleton-video-play">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="skeleton-meta" />
+              </div>
+            )
+          })}
         </div>
       ) : files.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">🗑️</p>
-          <h2>Trash is empty</h2>
-          <p className="placeholder-description">Files you delete will appear here for safe recovery.</p>
+          <p className="placeholder-icon">⊙</p>
+          <h2>Trash is empty.</h2>
+          <p className="placeholder-description">Deleted files reside here temporarily for safe recovery.</p>
         </div>
       ) : (
-        <div className="gallery-grid">
+        <div className={`gallery-grid-wrapper ${isLoading ? 'gallery-updating' : ''}`}>
+          <div className="gallery-grid">
           {files.map((file) => (
             <div key={file.id} className="media-card trash-card">
               <div className="media-preview-wrapper">
@@ -148,10 +162,11 @@ export default function TrashPage() {
                   className="trash-action-btn delete"
                 >
                   Delete Forever
-                </button>
+                 </button>
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>

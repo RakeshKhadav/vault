@@ -19,7 +19,8 @@ export async function proxy(req: NextRequest) {
   const refreshToken = req.cookies.get('refreshToken')?.value
 
   const isAuthRoute = path.startsWith('/login') || path.startsWith('/register')
-  const isProtectedRoute = !isAuthRoute
+  const isPublicRoute = isAuthRoute || path.startsWith('/share/')
+  const isProtectedRoute = !isPublicRoute
 
   let user = null
   if (accessToken) {

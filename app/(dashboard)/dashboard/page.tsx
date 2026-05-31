@@ -26,11 +26,108 @@ export default function GalleryPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [datePreset, setDatePreset] = useState<'anytime' | 'today' | 'week' | 'month' | 'year'>('anytime')
 
   // Fullscreen Viewer State
   const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null)
 
+  // Share Modal State
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+
+  // Selection Mode State
+  const [isSelectMode, setIsSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false)
+
   const observerRef = useRef<IntersectionObserver | null>(null)
+
+  // Apply date preset
+  const applyDatePreset = (preset: 'anytime' | 'today' | 'week' | 'month' | 'year') => {
+    setDatePreset(preset)
+    const now = new Date()
+    
+    if (preset === 'anytime') {
+      setStartDate('')
+      setEndDate('')
+    } else if (preset === 'today') {
+      const todayStr = now.toISOString().split('T')[0]
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+    } else if (preset === 'week') {
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      setStartDate(oneWeekAgo.toISOString().split('T')[0])
+      setEndDate(now.toISOString().split('T')[0])
+    } else if (preset === 'month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      setStartDate(firstDay.toISOString().split('T')[0])
+      setEndDate(now.toISOString().split('T')[0])
+    } else if (preset === 'year') {
+      const firstDayOfYear = new Date(now.getFullYear(), 0, 1)
+      setStartDate(firstDayOfYear.toISOString().split('T')[0])
+      setEndDate(now.toISOString().split('T')[0])
+    }
+  }
+
+  // Clear selection when leaving select mode or when filters change
+  const exitSelectMode = useCallback(() => {
+    setIsSelectMode(false)
+    setSelectedIds(new Set())
+  }, [])
+
+  const toggleFileSelection = useCallback((fileId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) {
+        next.delete(fileId)
+      } else {
+        next.add(fileId)
+      }
+      return next
+    })
+  }, [])
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(files.map((f) => f.id)))
+  }, [files])
+
+  const deselectAll = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  const handleBulkDownload = useCallback(async () => {
+    if (selectedIds.size === 0) return
+    setIsBulkDownloading(true)
+    try {
+      const res = await fetch('/api/files/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds: Array.from(selectedIds) }),
+      })
+      if (!res.ok) throw new Error('Failed to generate download links')
+      const data = await res.json()
+
+      // Stagger opening download links to avoid browser popup blocking
+      for (const dl of data.downloads) {
+        const a = document.createElement('a')
+        a.href = dl.url
+        a.download = ''
+        a.style.display = 'none'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        // Small delay to avoid browser throttling multiple downloads
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } catch (err) {
+      console.error('Bulk download failed:', err)
+      alert('Failed to download selected files. Please try again.')
+    } finally {
+      setIsBulkDownloading(false)
+    }
+  }, [selectedIds])
 
   // Debounce search query
   useEffect(() => {
@@ -87,9 +184,10 @@ export default function GalleryPage() {
     }
   }, [typeFilter, debouncedSearch, startDate, endDate])
 
-  // Reload list when filters change
+  // Reload list when filters change; also clear selection
   useEffect(() => {
     fetchFiles(true, null)
+    setSelectedIds(new Set())
   }, [fetchFiles])
 
   // Infinite scroll trigger
@@ -166,6 +264,23 @@ export default function GalleryPage() {
     }
   }
 
+  const handleShare = async (fileId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    setIsSharing(true)
+    try {
+      const res = await fetch(`/api/files/${fileId}/share`, { method: 'POST' })
+      if (!res.ok) throw new Error('Failed to generate share link')
+      const data = await res.json()
+      setShareUrl(data.url)
+      setIsShareModalOpen(true)
+    } catch (err) {
+      console.error(err)
+      alert('Failed to generate share link.')
+    } finally {
+      setIsSharing(false)
+    }
+  }
+
   // Navigation handlers
   const handlePrev = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
@@ -208,59 +323,23 @@ export default function GalleryPage() {
       {/* Search and Filters Toolbar */}
       <div className="gallery-toolbar">
         <div className="search-wrapper">
-          <span className="search-icon">🔍</span>
           <input
             type="text"
-            placeholder="Search media files..."
+            placeholder="Search media..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
           />
-          {searchQuery && (
-            <button className="clear-search-btn" onClick={() => setSearchQuery('')}>
-              ✕
-            </button>
-          )}
         </div>
 
-        <div className="date-filters">
-          <div className="date-input-group">
-            <span className="date-label">From:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="date-picker-input"
-            />
-          </div>
-          <div className="date-input-group">
-            <span className="date-label">To:</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="date-picker-input"
-            />
-          </div>
-          {(startDate || endDate) && (
-            <button
-              className="clear-dates-btn"
-              onClick={() => {
-                setStartDate('')
-                setEndDate('')
-              }}
-            >
-              ✕ Clear
-            </button>
-          )}
-        </div>
+        <div className="toolbar-divider" />
 
         <div className="filter-tabs">
           <button
             className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
             onClick={() => setTypeFilter('all')}
           >
-            All Media
+            All
           </button>
           <button
             className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
@@ -275,30 +354,92 @@ export default function GalleryPage() {
             Videos
           </button>
         </div>
+
+        <div className="toolbar-divider" />
+
+        <div className="date-presets">
+          {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
+            <button
+              key={preset}
+              className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
+              onClick={() => applyDatePreset(preset)}
+            >
+              {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
+            </button>
+          ))}
+        </div>
+
+        <div className="toolbar-divider" />
+
+        {/* Select Mode Toggle */}
+        <button
+          className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
+          onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
+        >
+          {isSelectMode ? '✕ Cancel' : '☐ Select'}
+        </button>
       </div>
 
+      {/* Bulk Actions Bar — shown when in select mode */}
+      {isSelectMode && (
+        <div className="bulk-actions-bar">
+          <div className="bulk-actions-left">
+            <button className="bulk-action-link" onClick={selectedIds.size === files.length ? deselectAll : selectAll}>
+              {selectedIds.size === files.length ? 'Deselect All' : 'Select All'}
+            </button>
+            <span className="bulk-count">{selectedIds.size} selected</span>
+          </div>
+          <div className="bulk-actions-right">
+            <button
+              className="bulk-download-btn"
+              disabled={selectedIds.size === 0 || isBulkDownloading}
+              onClick={handleBulkDownload}
+            >
+              {isBulkDownloading ? (
+                <><span className="btn-spinner" /> Downloading...</>
+              ) : (
+                <>📥 Download {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}</>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Media Grid */}
-      {isLoading ? (
+      {isLoading && files.length === 0 ? (
         <div className="gallery-grid">
-          {Array.from({ length: 8 }).map((_, idx) => (
-            <div key={idx} className="media-card skeleton">
-              <div className="skeleton-thumb" />
-              <div className="skeleton-meta" />
-            </div>
-          ))}
+          {Array.from({ length: 12 }).map((_, idx) => {
+            const aspectRatios = ['1/1', '16/9', '4/5', '3/2', '4/3', '1/1', '16/9', '3/2', '4/3', '4/5', '1/1', '3/2']
+            const aspect = aspectRatios[idx % aspectRatios.length]
+            const isVideo = idx % 3 === 0
+            return (
+              <div key={idx} className="media-card skeleton">
+                <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
+                  {isVideo && (
+                    <div className="skeleton-video-play">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="skeleton-meta" />
+              </div>
+            )
+          })}
         </div>
       ) : files.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">📷</p>
-          <h2>No media found</h2>
+          <p className="placeholder-icon">⊙</p>
+          <h2>The collection is quiet.</h2>
           <p className="placeholder-description">
             {searchQuery || typeFilter !== 'all'
-              ? 'Try adjusting your filters or search terms.'
-              : 'Upload your photos and videos to see them here.'}
+              ? 'No matching memories found in the index.'
+              : 'Begin preserving your stories. Drag files here or choose upload to start your archive.'}
           </p>
         </div>
       ) : (
-        <>
+        <div className={`gallery-grid-wrapper ${isLoading ? 'gallery-updating' : ''}`}>
           <div className="gallery-grid">
             {files.map((file, index) => {
               const isLast = index === files.length - 1
@@ -306,10 +447,20 @@ export default function GalleryPage() {
                 <div
                   key={file.id}
                   ref={isLast ? lastElementRef : null}
-                  className="media-card"
-                  onClick={() => setActiveMediaIndex(index)}
+                  className={`media-card ${isSelectMode && selectedIds.has(file.id) ? 'selected' : ''}`}
+                  onClick={() => isSelectMode ? toggleFileSelection(file.id) : setActiveMediaIndex(index)}
                 >
                   <div className="media-preview-wrapper">
+                    {/* Selection checkbox */}
+                    {isSelectMode && (
+                      <button
+                        className={`card-select-checkbox ${selectedIds.has(file.id) ? 'checked' : ''}`}
+                        onClick={(e) => toggleFileSelection(file.id, e)}
+                        aria-label={selectedIds.has(file.id) ? 'Deselect' : 'Select'}
+                      >
+                        {selectedIds.has(file.id) ? '✓' : ''}
+                      </button>
+                    )}
                     {file.thumbnailFileId ? (
                       <img
                         src={`/api/files/${file.id}/thumbnail`}
@@ -345,6 +496,13 @@ export default function GalleryPage() {
                     >
                       📥
                     </button>
+                    <button
+                      className="card-share-btn"
+                      onClick={(e) => handleShare(file.id, e)}
+                      title="Share file"
+                    >
+                      🔗
+                    </button>
                   </div>
                   <div className="media-info">
                     <span className="media-title" title={file.originalName}>
@@ -355,15 +513,28 @@ export default function GalleryPage() {
                 </div>
               )
             })}
+            
+            {isLoadingMore && Array.from({ length: 4 }).map((_, idx) => {
+              const aspectRatios = ['1/1', '16/9', '4/3', '3/2']
+              const aspect = aspectRatios[idx % aspectRatios.length]
+              const isVideo = idx % 2 === 0
+              return (
+                <div key={`more-skeleton-${idx}`} className="media-card skeleton">
+                  <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
+                    {isVideo && (
+                      <div className="skeleton-video-play">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="skeleton-meta" />
+                </div>
+              )
+            })}
           </div>
-
-          {isLoadingMore && (
-            <div className="gallery-load-more-loader">
-              <div className="spinner" />
-              <span>Loading more items...</span>
-            </div>
-          )}
-        </>
+        </div>
       )}
 
       {/* Fullscreen Media Viewer Modal */}
@@ -421,6 +592,13 @@ export default function GalleryPage() {
                   📥 Download
                 </button>
                 <button
+                  className="viewer-share-btn"
+                  onClick={(e) => handleShare(activeMedia.id, e)}
+                  title="Share file"
+                >
+                  🔗 Share
+                </button>
+                <button
                   className="viewer-delete-btn"
                   onClick={(e) => handleDelete(activeMedia.id, activeMediaIndex!, e)}
                   title="Move to trash"
@@ -429,6 +607,40 @@ export default function GalleryPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Link Modal Overlay */}
+      {isShareModalOpen && shareUrl && (
+        <div className="modal-overlay" onClick={() => setIsShareModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center' }}>
+            <div className="modal-header">
+              <h3>Temporary Share Link</h3>
+              <button className="btn-close" onClick={() => setIsShareModalOpen(false)}>✕</button>
+            </div>
+            <p style={{ color: '#8f95a3', fontSize: '0.8125rem', marginBottom: '1.25rem' }}>
+              Anyone with this link can view and download the file. This link will expire in 15 minutes.
+            </p>
+            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+              <input
+                type="text"
+                readOnly
+                value={shareUrl}
+                style={{ textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', borderColor: 'rgba(255, 255, 255, 0.1)', width: '100%', padding: '0.5rem' }}
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
+            </div>
+            <button
+              className="btn-submit"
+              style={{ width: '100%' }}
+              onClick={() => {
+                navigator.clipboard.writeText(shareUrl)
+                alert('Copied to clipboard!')
+              }}
+            >
+              Copy Link to Clipboard
+            </button>
           </div>
         </div>
       )}

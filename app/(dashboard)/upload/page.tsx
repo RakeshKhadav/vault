@@ -190,7 +190,12 @@ export default function UploadPage() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <span className="placeholder-icon">📤</span>
+        <span className="upload-dropzone-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 3L12 15M12 3L8 7M12 3L16 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 17V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </span>
         <h2>Drag and drop media here</h2>
         <p className="placeholder-description">
           Support for Photos (max 20MB) and Videos (max 2GB)
