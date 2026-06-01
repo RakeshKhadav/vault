@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../lib/db'
 import { StorageManager } from '../../../../../lib/storage/manager'
 import jwt from 'jsonwebtoken'
+import { decrypt } from '../../../../../lib/storage/encryption'
 
 const JWT_SHARE_SECRET = process.env.JWT_SHARE_SECRET || process.env.JWT_ACCESS_SECRET || 'fallback-share-secret'
 
@@ -31,7 +32,8 @@ export async function GET(
     }
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
-    const viewUrl = await provider.generateViewUrl(file.storageNode.credentialsJson, file.providerFileId)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    const viewUrl = await provider.generateViewUrl(credentialsStr, file.providerFileId)
 
     return NextResponse.redirect(viewUrl, 307)
   } catch (error) {

@@ -22,14 +22,20 @@ export async function GET(
 
   try {
     const file = await db.file.findFirst({
-      where: { id, userId: user.userId, deletedAt: null },
+      where: {
+        id,
+        userId: user.role === 'ADMIN' ? undefined : user.userId,
+        deletedAt: null,
+      },
     })
 
     if (!file) {
       return new Response('File not found', { status: 404 })
     }
 
-    const stream = await StorageService.getDownloadStream(id, user.userId)
+    const stream = user.role === 'ADMIN'
+      ? await StorageService.getDownloadStreamAdmin(id)
+      : await StorageService.getDownloadStream(id, user.userId)
 
     // Convert node Readable stream to Web Response stream
     const webStream = new ReadableStream({

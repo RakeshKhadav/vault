@@ -20,7 +20,7 @@ export async function DELETE(
   const { id } = await params
 
   try {
-    await StorageService.softDeleteFile(id, user.userId)
+    await StorageService.softDeleteFile(id, user.userId, user.role)
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Error soft-deleting file:', error)

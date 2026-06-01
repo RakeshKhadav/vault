@@ -1,13 +1,11 @@
 import { db } from '../db'
 import { StorageProvider } from './providers/storage-provider.interface'
-import { MegaProvider } from './providers/mega.provider'
-import { PCloudProvider } from './providers/pcloud.provider'
+import { B2Provider } from './providers/b2.provider'
 import { ProviderType } from '@prisma/client'
 
 export class StorageManager {
   private static providers: Record<ProviderType, StorageProvider> = {
-    MEGA: new MegaProvider(),
-    PCLOUD: new PCloudProvider(),
+    B2: new B2Provider(),
   }
 
   static getProvider(type: ProviderType): StorageProvider {

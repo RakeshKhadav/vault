@@ -12,7 +12,13 @@ export interface UploadResult {
 
 export interface StorageProvider {
   testConnection(credentialsJson: string): Promise<{ success: boolean }>
-  upload(credentialsJson: string, fileBuffer: Buffer, fileName: string): Promise<UploadResult>
+  upload(
+    credentialsJson: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    thumbnailBuffer?: Buffer,
+    thumbnailName?: string
+  ): Promise<{ file: UploadResult; thumbnail?: UploadResult }>
   download(credentialsJson: string, providerFileId: string): Promise<Readable>
   delete(credentialsJson: string, providerFileId: string): Promise<{ success: boolean }>
   generateViewUrl(credentialsJson: string, providerFileId: string): Promise<string>

@@ -29,35 +29,42 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    const aggregates = await db.file.groupBy({
+    const sizeAggregates = await db.file.groupBy({
       by: ['userId'],
       _sum: {
         fileSize: true,
-      },
-      _count: {
-        _all: true,
       },
       where: {
         deletedAt: null,
       },
     })
 
-    const aggregateMap = new Map(
-      aggregates.map((agg) => [
-        agg.userId,
-        {
-          sizeBytes: agg._sum.fileSize || BigInt(0),
-          count: agg._count._all,
-        },
-      ])
+    const countAggregates = await db.file.groupBy({
+      by: ['userId'],
+      _count: {
+        _all: true,
+      },
+      where: {
+        deletedAt: null,
+        thumbnailOf: null,
+      },
+    })
+
+    const sizeMap = new Map(
+      sizeAggregates.map((agg) => [agg.userId, agg._sum.fileSize || BigInt(0)])
+    )
+
+    const countMap = new Map(
+      countAggregates.map((agg) => [agg.userId, agg._count._all])
     )
 
     const safeUsers = users.map((user) => {
-      const agg = aggregateMap.get(user.id) || { sizeBytes: BigInt(0), count: 0 }
+      const sizeBytes = sizeMap.get(user.id) || BigInt(0)
+      const count = countMap.get(user.id) || 0
       return {
         ...user,
-        storageUsedBytes: agg.sizeBytes.toString(),
-        filesCount: agg.count,
+        storageUsedBytes: sizeBytes.toString(),
+        filesCount: count,
       }
     })
 

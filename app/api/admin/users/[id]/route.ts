@@ -38,18 +38,21 @@ export async function GET(
       return NextResponse.json({ message: 'User not found' }, { status: 404 })
     }
 
-    const aggregate = await db.file.aggregate({
+    const sizeAggregate = await db.file.aggregate({
       _sum: { fileSize: true },
-      _count: true,
       where: { userId: id, deletedAt: null },
     })
 
-    const sizeBytes = aggregate._sum.fileSize || BigInt(0)
+    const countAggregate = await db.file.count({
+      where: { userId: id, deletedAt: null, thumbnailOf: null },
+    })
+
+    const sizeBytes = sizeAggregate._sum.fileSize || BigInt(0)
 
     return NextResponse.json({
       ...user,
       storageUsedBytes: sizeBytes.toString(),
-      filesCount: aggregate._count,
+      filesCount: countAggregate,
     })
   } catch (error) {
     console.error('Error fetching admin user details:', error)

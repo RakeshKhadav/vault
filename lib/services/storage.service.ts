@@ -13,82 +13,91 @@ export class StorageService {
     const provider = StorageManager.getProvider(node.provider)
     const credentialsStr = decrypt(node.credentialsJson)
 
-    // 2. Perform upload via provider adapter
-    const uploadResult = await provider.upload(credentialsStr, fileBuffer, fileName)
+    // 2. Generate thumbnail buffer beforehand
+    let thumbnailBuffer: Buffer | null = null
+    const isImage = mimeType.startsWith('image/')
+    const isVideo = mimeType.startsWith('video/')
+    const thumbName = `thumb-${fileName}.jpg`
 
-    // 3. Save original file metadata in database
+    try {
+      if (isImage) {
+        thumbnailBuffer = await MediaProcessor.generateImageThumbnail(fileBuffer)
+      } else if (isVideo) {
+        thumbnailBuffer = await MediaProcessor.generateVideoThumbnail(fileBuffer, fileName)
+      }
+    } catch (err) {
+      console.error('Thumbnail generation skipped/failed:', err)
+    }
+
+    // 3. Perform upload via provider adapter (uploading both files in one go!)
+    const uploadResult = await provider.upload(
+      credentialsStr,
+      fileBuffer,
+      fileName,
+      thumbnailBuffer || undefined,
+      thumbnailBuffer ? thumbName : undefined
+    )
+
+    // 4. Save original file metadata in database
     const file = await db.file.create({
       data: {
         userId,
         storageNodeId: node.id,
         fileName,
         originalName: fileName,
-        providerFileId: uploadResult.providerFileId,
+        providerFileId: uploadResult.file.providerFileId,
         mimeType,
-        fileSize: uploadResult.size,
+        fileSize: uploadResult.file.size,
       },
     })
 
-    // 4. Generate & upload thumbnail
-    try {
-      let thumbnailBuffer: Buffer | null = null
-      const isImage = mimeType.startsWith('image/')
-      const isVideo = mimeType.startsWith('video/')
+    let finalFile = file
 
-      if (isImage) {
-        thumbnailBuffer = await MediaProcessor.generateImageThumbnail(fileBuffer)
-      } else if (isVideo) {
-        thumbnailBuffer = await MediaProcessor.generateVideoThumbnail(fileBuffer, fileName)
-      }
-
-      if (thumbnailBuffer) {
-        const thumbName = `thumb-${fileName}.jpg`
-        const thumbUpload = await provider.upload(credentialsStr, thumbnailBuffer, thumbName)
-
-        // Save thumbnail as a file record
+    // 5. Save thumbnail metadata and link if uploaded
+    if (uploadResult.thumbnail) {
+      try {
         const thumbFile = await db.file.create({
           data: {
             userId,
             storageNodeId: node.id,
             fileName: thumbName,
             originalName: thumbName,
-            providerFileId: thumbUpload.providerFileId,
+            providerFileId: uploadResult.thumbnail.providerFileId,
             mimeType: 'image/jpeg',
-            fileSize: thumbUpload.size,
+            fileSize: uploadResult.thumbnail.size,
           },
         })
 
         // Link original file to thumbnail
-        await db.file.update({
+        finalFile = await db.file.update({
           where: { id: file.id },
           data: { thumbnailFileId: thumbFile.id },
         })
+      } catch (dbErr) {
+        console.error('Failed to save thumbnail metadata to DB:', dbErr)
       }
-    } catch (err) {
-      console.error('Thumbnail generation skipped/failed:', err)
     }
 
-    // 5. Update the storage node's used space
+    // 6. Update the storage node's used space (including thumbnail size if uploaded)
+    const totalUploadedSizeMb = (fileBuffer.length + (thumbnailBuffer?.length || 0)) / (1024 * 1024)
     await db.storageNode.update({
       where: { id: node.id },
       data: {
         usedSpaceMb: {
-          increment: Math.ceil(sizeInMb),
+          increment: Math.ceil(totalUploadedSizeMb),
         },
       },
     })
 
-    // 6. Queue background backup job if file is an image or video under 1GB
-    const isImage = mimeType.startsWith('image/')
-    const isVideo = mimeType.startsWith('video/')
+    // 7. Queue background backup job if file is an image or video under 1GB
     const oneGb = 1024 * 1024 * 1024
     if (isImage || (isVideo && fileBuffer.length <= oneGb)) {
-      await BackupService.createBackupJob(file.id).catch((err) => {
+      await BackupService.createBackupJob(finalFile.id).catch((err) => {
         console.error('Failed to create backup job:', err)
       })
     }
 
-    return file
+    return finalFile
   }
 
   static async getDownloadStream(fileId: string, userId: string) {
@@ -106,9 +115,13 @@ export class StorageService {
     return provider.download(credentialsStr, file.providerFileId)
   }
 
-  static async softDeleteFile(fileId: string, userId: string) {
+  static async softDeleteFile(fileId: string, userId: string, userRole?: string) {
     const file = await db.file.findFirst({
-      where: { id: fileId, userId, deletedAt: null },
+      where: {
+        id: fileId,
+        userId: userRole === 'ADMIN' ? undefined : userId,
+        deletedAt: null,
+      },
     })
 
     if (!file) {

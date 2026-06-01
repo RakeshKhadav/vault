@@ -40,10 +40,19 @@ export async function GET(req: NextRequest) {
     })
 
     const usedSpaceBytes = aggregate._sum.fileSize || BigInt(0)
-    const limitBytes = BigInt(20) * BigInt(1024) * BigInt(1024) * BigInt(1024) // 20 GB
+    
+    // Fetch all active storage nodes to sum their total capacity
+    const activeNodes = await db.storageNode.findMany({
+      where: { isActive: true },
+    })
+
+    const totalLimitMb = activeNodes.reduce((sum, node) => sum + Number(node.totalSpaceMb), 0)
+    const limitBytes = BigInt(totalLimitMb) * BigInt(1024) * BigInt(1024)
     
     // Percentage calculation (safe BigInt division, then convert to Number for decimal representation)
-    const percentage = Number((usedSpaceBytes * BigInt(10000)) / limitBytes) / 100
+    const percentage = limitBytes > BigInt(0)
+      ? Number((usedSpaceBytes * BigInt(10000)) / limitBytes) / 100
+      : 0
 
     // Fetch storage nodes list - safe fields only, no credentials!
     const nodes = await db.storageNode.findMany({

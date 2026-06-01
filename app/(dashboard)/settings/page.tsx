@@ -19,7 +19,7 @@ interface StorageStats {
 interface StorageNode {
   id: string
   name: string
-  provider: 'MEGA' | 'PCLOUD'
+  provider: 'B2'
   totalSpaceMb: string
   usedSpaceMb: string
   isActive: boolean
@@ -180,7 +180,8 @@ export default function SettingsPage() {
   })
 
   // Simple visual storage calculation
-  const limitBytesVal = parseInt(data.storage.limitBytes, 10) || 21474836480 // 20GB fallback
+  const parsedLimitBytes = parseInt(data.storage.limitBytes, 10)
+  const limitBytesVal = isNaN(parsedLimitBytes) ? 0 : parsedLimitBytes
   const remainingBytesVal = Math.max(0, limitBytesVal - (parseInt(data.storage.usedSpaceBytes, 10) || 0))
 
   return (

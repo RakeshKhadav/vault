@@ -21,7 +21,11 @@ export async function POST(
 
   try {
     const file = await db.file.updateMany({
-      where: { id, userId: user.userId, deletedAt: null },
+      where: {
+        id,
+        userId: user.role === 'ADMIN' ? undefined : user.userId,
+        deletedAt: null,
+      },
       data: { isFavorite: true },
     })
 
@@ -49,7 +53,11 @@ export async function DELETE(
 
   try {
     const file = await db.file.updateMany({
-      where: { id, userId: user.userId, deletedAt: null },
+      where: {
+        id,
+        userId: user.role === 'ADMIN' ? undefined : user.userId,
+        deletedAt: null,
+      },
       data: { isFavorite: false },
     })
 

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const files = await db.file.findMany({
       where: {
         id: { in: fileIds },
-        userId: user.userId,
+        userId: user.role === 'ADMIN' ? undefined : user.userId,
         deletedAt: null,
       },
       select: { id: true },

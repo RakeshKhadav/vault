@@ -24,9 +24,19 @@ export async function GET(req: NextRequest) {
     const startDate = url.searchParams.get('startDate')
     const endDate = url.searchParams.get('endDate')
 
+    const targetUserId = url.searchParams.get('userId')
+    let userIdToQuery = user.userId
+
+    if (targetUserId) {
+      if (user.role !== 'ADMIN') {
+        return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
+      }
+      userIdToQuery = targetUserId
+    }
+
     // Construct filters
     const whereClause: any = {
-      userId: user.userId,
+      userId: userIdToQuery,
       deletedAt: null,
       thumbnailOf: null, // Exclude files that are thumbnails of other files
     }

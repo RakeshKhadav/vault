@@ -15,8 +15,7 @@ enum UserRole {
 }
 
 enum ProviderType {
-  MEGA
-  PCLOUD
+  B2
 }
 
 enum BackupStatus {

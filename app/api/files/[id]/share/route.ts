@@ -26,7 +26,7 @@ export async function POST(
     const file = await db.file.findFirst({
       where: {
         id,
-        userId: user.userId,
+        userId: user.role === 'ADMIN' ? undefined : user.userId,
         deletedAt: null,
       },
     })
@@ -37,7 +37,7 @@ export async function POST(
 
     // Generate 15-minute share token
     const token = jwt.sign(
-      { fileId: file.id, userId: user.userId },
+      { fileId: file.id, userId: file.userId },
       JWT_SHARE_SECRET,
       { expiresIn: '15m' }
     )

@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 interface StorageNode {
   id: string
   name: string
-  provider: 'MEGA' | 'PCLOUD'
+  provider: 'B2'
   totalSpaceMb: string
   usedSpaceMb: string
   isActive: boolean
@@ -20,10 +20,12 @@ export default function AdminStorageNodesPage() {
   // Modal Form State
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [nodeName, setNodeName] = useState('')
-  const [provider, setProvider] = useState<'MEGA' | 'PCLOUD'>('MEGA')
-  const [megaEmail, setMegaEmail] = useState('')
-  const [megaPassword, setMegaPassword] = useState('')
-  const [pcloudToken, setPcloudToken] = useState('')
+  const [b2BucketName, setB2BucketName] = useState('')
+  const [b2Endpoint, setB2Endpoint] = useState('')
+  const [b2Region, setB2Region] = useState('')
+  const [b2KeyId, setB2KeyId] = useState('')
+  const [b2ApplicationKey, setB2ApplicationKey] = useState('')
+  const [b2BucketLimitGb, setB2BucketLimitGb] = useState('50')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function fetchNodes() {
@@ -106,9 +108,14 @@ export default function AdminStorageNodesPage() {
     setIsSubmitting(true)
     setError(null)
 
-    const credentials = provider === 'MEGA' 
-      ? { email: megaEmail, password: megaPassword }
-      : { token: pcloudToken }
+    const credentials = {
+      bucketName: b2BucketName,
+      endpoint: b2Endpoint,
+      region: b2Region,
+      keyID: b2KeyId,
+      applicationKey: b2ApplicationKey,
+      bucketLimitGb: Number(b2BucketLimitGb) || 50,
+    }
 
     try {
       const res = await fetch('/api/admin/storage-nodes', {
@@ -116,7 +123,7 @@ export default function AdminStorageNodesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: nodeName,
-          provider,
+          provider: 'B2',
           credentials,
         }),
       })
@@ -130,9 +137,12 @@ export default function AdminStorageNodesPage() {
       setIsModalOpen(false)
       // Reset form
       setNodeName('')
-      setMegaEmail('')
-      setMegaPassword('')
-      setPcloudToken('')
+      setB2BucketName('')
+      setB2Endpoint('')
+      setB2Region('')
+      setB2KeyId('')
+      setB2ApplicationKey('')
+      setB2BucketLimitGb('50')
       
       fetchNodes() // Refresh nodes list
     } catch {
@@ -166,7 +176,7 @@ export default function AdminStorageNodesPage() {
         <div className="gallery-placeholder">
           <p className="placeholder-icon">⊙</p>
           <h2>No Storage Nodes Connected</h2>
-          <p className="placeholder-description">Add a MEGA or pCloud account as a storage node to start uploading files.</p>
+          <p className="placeholder-description">Add a Backblaze B2 S3-Compatible bucket as a storage node to start uploading files.</p>
         </div>
       ) : (
         <div className="nodes-grid">
@@ -227,7 +237,7 @@ export default function AdminStorageNodesPage() {
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Connect Storage Node</h3>
+              <h3>Connect Backblaze B2 Storage Node</h3>
               <button className="btn-close" onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
             <form onSubmit={handleSubmitNode} className="modal-form">
@@ -236,7 +246,7 @@ export default function AdminStorageNodesPage() {
                 <input
                   id="friendlyNodeName"
                   type="text"
-                  placeholder="e.g. Mega Backup Account"
+                  placeholder="e.g. Backblaze B2 Primary"
                   value={nodeName}
                   onChange={(e) => setNodeName(e.target.value)}
                   required
@@ -244,63 +254,77 @@ export default function AdminStorageNodesPage() {
               </div>
 
               <div className="form-group">
-                <label>Storage Provider</label>
-                <div className="provider-tabs">
-                  <button 
-                    type="button" 
-                    className={`provider-tab ${provider === 'MEGA' ? 'active' : ''}`}
-                    onClick={() => setProvider('MEGA')}
-                  >
-                    MEGA
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`provider-tab ${provider === 'PCLOUD' ? 'active' : ''}`}
-                    onClick={() => setProvider('PCLOUD')}
-                  >
-                    pCloud
-                  </button>
-                </div>
+                <label htmlFor="b2BucketName">Bucket Name</label>
+                <input
+                  id="b2BucketName"
+                  type="text"
+                  placeholder="e.g. vault-media-app"
+                  value={b2BucketName}
+                  onChange={(e) => setB2BucketName(e.target.value)}
+                  required
+                />
               </div>
 
-              {provider === 'MEGA' ? (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="megaEmail">MEGA Email Address</label>
-                    <input
-                      id="megaEmail"
-                      type="email"
-                      placeholder="account@mega.nz"
-                      value={megaEmail}
-                      onChange={(e) => setMegaEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="megaPassword">MEGA Password</label>
-                    <input
-                      id="megaPassword"
-                      type="password"
-                      placeholder="••••••••"
-                      value={megaPassword}
-                      onChange={(e) => setMegaPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="form-group">
-                  <label htmlFor="pcloudToken">pCloud OAuth2 Token</label>
-                  <input
-                    id="pcloudToken"
-                    type="password"
-                    placeholder="Enter OAuth2 access token"
-                    value={pcloudToken}
-                    onChange={(e) => setPcloudToken(e.target.value)}
-                    required
-                  />
-                </div>
-              )}
+              <div className="form-group">
+                <label htmlFor="b2Endpoint">Endpoint (S3 Host)</label>
+                <input
+                  id="b2Endpoint"
+                  type="text"
+                  placeholder="e.g. s3.us-east-005.backblazeb2.com"
+                  value={b2Endpoint}
+                  onChange={(e) => setB2Endpoint(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="b2Region">Region</label>
+                <input
+                  id="b2Region"
+                  type="text"
+                  placeholder="e.g. us-east-005"
+                  value={b2Region}
+                  onChange={(e) => setB2Region(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="b2KeyId">Application Key ID (keyID)</label>
+                <input
+                  id="b2KeyId"
+                  type="text"
+                  placeholder="Enter Key ID"
+                  value={b2KeyId}
+                  onChange={(e) => setB2KeyId(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="b2ApplicationKey">Application Key Secret</label>
+                <input
+                  id="b2ApplicationKey"
+                  type="password"
+                  placeholder="Enter Application Key Secret"
+                  value={b2ApplicationKey}
+                  onChange={(e) => setB2ApplicationKey(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="b2BucketLimitGb">Storage Limit (GB)</label>
+                <input
+                  id="b2BucketLimitGb"
+                  type="number"
+                  placeholder="e.g. 50"
+                  min="1"
+                  value={b2BucketLimitGb}
+                  onChange={(e) => setB2BucketLimitGb(e.target.value)}
+                  required
+                />
+              </div>
 
               <button type="submit" className="btn-submit" disabled={isSubmitting}>
                 {isSubmitting ? 'Testing & Saving...' : 'Save Storage Node'}

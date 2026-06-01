@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 interface UserAdminData {
   id: string
@@ -82,6 +83,7 @@ export default function AdminUsersPage() {
                 <th>Registered At</th>
                 <th>Total Files</th>
                 <th>Storage Occupied</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -96,6 +98,15 @@ export default function AdminUsersPage() {
                   <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                   <td>{user.filesCount}</td>
                   <td>{formatBytes(user.storageUsedBytes)}</td>
+                  <td>
+                    <Link
+                      href={`/admin/users/${user.id}`}
+                      className="btn-admin-nav"
+                      style={{ display: 'inline-block', fontSize: '0.75rem', textDecoration: 'none' }}
+                    >
+                      View Gallery
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

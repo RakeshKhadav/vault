@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../lib/db'
 import { AuthService } from '../../../../../lib/services/auth.service'
 import { StorageManager } from '../../../../../lib/storage/manager'
+import { decrypt } from '../../../../../lib/storage/encryption'
 
 async function verifyAuth(req: NextRequest) {
   const accessToken = req.cookies.get('accessToken')?.value
@@ -22,7 +23,11 @@ export async function GET(
 
   try {
     const file = await db.file.findFirst({
-      where: { id, userId: user.userId, deletedAt: null },
+      where: {
+        id,
+        userId: user.role === 'ADMIN' ? undefined : user.userId,
+        deletedAt: null,
+      },
       include: { storageNode: true },
     })
 
@@ -31,7 +36,8 @@ export async function GET(
     }
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
-    const streamUrl = await provider.generateStreamUrl(file.storageNode.credentialsJson, file.providerFileId)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    const streamUrl = await provider.generateStreamUrl(credentialsStr, file.providerFileId)
 
     return NextResponse.redirect(streamUrl, 307)
   } catch (error) {

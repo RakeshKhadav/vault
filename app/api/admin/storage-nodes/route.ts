@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 const CreateNodeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  provider: z.enum(['MEGA', 'PCLOUD']),
+  provider: z.enum(['B2']),
   credentials: z.record(z.string(), z.any()),
 })
 

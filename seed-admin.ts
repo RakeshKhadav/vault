@@ -1,3 +1,4 @@
+import './load-env'
 import { db } from './lib/db'
 import { AuthService } from './lib/services/auth.service'
 
@@ -33,4 +34,9 @@ async function createAdmin() {
   console.log(`Created admin user successfully: ${user.email} (ID: ${user.id})`)
 }
 
-createAdmin().catch(console.error)
+createAdmin()
+  .catch(console.error)
+  .finally(() => {
+    // Explicitly call process.exit to prevent pg pool handles from hanging the CLI
+    process.exit(0)
+  })

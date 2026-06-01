@@ -1,6 +1,7 @@
 import { db } from '../db'
 import { StorageManager } from '../storage/manager'
 import { TelegramProvider } from '../storage/providers/telegram.provider'
+import { decrypt } from '../storage/encryption'
 
 export class BackupService {
   static async createBackupJob(fileId: string) {
@@ -55,9 +56,10 @@ export class BackupService {
     try {
       const file = job.file
       const provider = StorageManager.getProvider(file.storageNode.provider)
+      const credentialsStr = decrypt(file.storageNode.credentialsJson)
       
       // Download the file stream from primary storage
-      const stream = await provider.download(file.storageNode.credentialsJson, file.providerFileId)
+      const stream = await provider.download(credentialsStr, file.providerFileId)
       
       // Convert Node readable stream to Buffer
       const chunks: any[] = []
