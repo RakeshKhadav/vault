@@ -10,6 +10,7 @@ interface TrashedFile {
   fileSize: string
   thumbnailFileId: string | null
   deletedAt: string
+  thumbnailUrl?: string | null
 }
 
 export default function TrashPage() {
@@ -120,9 +121,9 @@ export default function TrashPage() {
           {files.map((file) => (
             <div key={file.id} className="media-card trash-card">
               <div className="media-preview-wrapper">
-                {file.thumbnailFileId ? (
+                {file.thumbnailUrl ? (
                   <img
-                    src={`/api/files/${file.id}/thumbnail`}
+                    src={file.thumbnailUrl}
                     alt={file.originalName}
                     loading="lazy"
                     className="media-thumbnail"

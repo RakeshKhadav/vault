@@ -11,6 +11,9 @@ interface MediaFile {
   isFavorite: boolean
   thumbnailFileId: string | null
   uploadedAt: string
+  thumbnailUrl?: string | null
+  viewUrl?: string | null
+  streamUrl?: string | null
 }
 
 export default function FavoritesPage() {
@@ -30,6 +33,10 @@ export default function FavoritesPage() {
 
   // Fullscreen Viewer State
   const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+
+  // Filters Collapsible State (Mobile)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const observerRef = useRef<IntersectionObserver | null>(null)
 
@@ -195,17 +202,28 @@ export default function FavoritesPage() {
     e?.stopPropagation()
     if (activeMediaIndex === null || files.length === 0) return
     setActiveMediaIndex((prev) => (prev === 0 ? files.length - 1 : prev! - 1))
+    setShowDetails(false)
   }, [activeMediaIndex, files])
 
   const handleNext = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (activeMediaIndex === null || files.length === 0) return
     setActiveMediaIndex((prev) => (prev === files.length - 1 ? 0 : prev! + 1))
+    setShowDetails(false)
   }, [activeMediaIndex, files])
 
   const handleClose = useCallback(() => {
     setActiveMediaIndex(null)
+    setShowDetails(false)
   }, [])
+
+  const handleOverlayClick = useCallback(() => {
+    if (showDetails) {
+      setShowDetails(false)
+    } else {
+      handleClose()
+    }
+  }, [showDetails, handleClose])
 
   // Keyboard navigation
   useEffect(() => {
@@ -225,6 +243,30 @@ export default function FavoritesPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [activeMediaIndex, handlePrev, handleNext, handleClose])
 
+  // CLIENT-SIDE VISUAL ANTICIPATION: Silently preload next and previous high-resolution images
+  useEffect(() => {
+    if (activeMediaIndex === null || files.length === 0) return
+
+    const preloadImage = (url: string) => {
+      const img = new Image()
+      img.src = url
+    }
+
+    // Preload previous image
+    const prevIndex = activeMediaIndex === 0 ? files.length - 1 : activeMediaIndex - 1
+    const prevFile = files[prevIndex]
+    if (prevFile && prevFile.viewUrl && prevFile.mimeType.startsWith('image/')) {
+      preloadImage(prevFile.viewUrl)
+    }
+
+    // Preload next image
+    const nextIndex = activeMediaIndex === files.length - 1 ? 0 : activeMediaIndex + 1
+    const nextFile = files[nextIndex]
+    if (nextFile && nextFile.viewUrl && nextFile.mimeType.startsWith('image/')) {
+      preloadImage(nextFile.viewUrl)
+    }
+  }, [activeMediaIndex, files])
+
   const activeMedia = activeMediaIndex !== null ? files[activeMediaIndex] : null
 
   return (
@@ -241,41 +283,52 @@ export default function FavoritesPage() {
           />
         </div>
 
-        <div className="toolbar-divider" />
+        {/* Small filters toggle button on mobile */}
+        <button
+          className={`filter-toggle-btn ${filtersOpen ? 'active' : ''}`}
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          aria-label="Toggle filters"
+        >
+          🎛️ Filters
+        </button>
 
-        <div className="filter-tabs">
-          <button
-            className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('all')}
-          >
-            All
-          </button>
-          <button
-            className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('image')}
-          >
-            Photos
-          </button>
-          <button
-            className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('video')}
-          >
-            Videos
-          </button>
-        </div>
+        <div className={`gallery-filters-collapsible ${filtersOpen ? 'open' : ''}`}>
+          <div className="toolbar-divider" />
 
-        <div className="toolbar-divider" />
-
-        <div className="date-presets">
-          {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
+          <div className="filter-tabs">
             <button
-              key={preset}
-              className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
-              onClick={() => applyDatePreset(preset)}
+              className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setTypeFilter('all')}
             >
-              {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
+              All
             </button>
-          ))}
+            <button
+              className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
+              onClick={() => setTypeFilter('image')}
+            >
+              Photos
+            </button>
+            <button
+              className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
+              onClick={() => setTypeFilter('video')}
+            >
+              Videos
+            </button>
+          </div>
+
+          <div className="toolbar-divider" />
+
+          <div className="date-presets">
+            {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
+              <button
+                key={preset}
+                className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
+                onClick={() => applyDatePreset(preset)}
+              >
+                {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -325,9 +378,9 @@ export default function FavoritesPage() {
                   onClick={() => setActiveMediaIndex(index)}
                 >
                   <div className="media-preview-wrapper">
-                    {file.thumbnailFileId ? (
+                    {file.thumbnailUrl ? (
                       <img
-                        src={`/api/files/${file.id}/thumbnail`}
+                        src={file.thumbnailUrl}
                         alt={file.originalName}
                         loading="lazy"
                         className="media-thumbnail"
@@ -396,9 +449,13 @@ export default function FavoritesPage() {
 
       {/* Fullscreen Media Viewer Modal */}
       {activeMedia && (
-        <div className="viewer-overlay" onClick={handleClose}>
+        <div className="viewer-overlay" onClick={handleOverlayClick}>
           <button className="viewer-close-btn" onClick={handleClose} aria-label="Close viewer">
             ✕
+          </button>
+          
+          <button className="viewer-more-btn" onClick={(e) => { e.stopPropagation(); setShowDetails(!showDetails); }} aria-label="Toggle details">
+            ⋮
           </button>
           
           <button className="viewer-nav-btn prev" onClick={handlePrev} aria-label="Previous">
@@ -412,21 +469,21 @@ export default function FavoritesPage() {
             <div className="viewer-media-container">
               {isVideo(activeMedia.mimeType) ? (
                 <video
-                  src={`/api/files/${activeMedia.id}/stream`}
+                  src={activeMedia.streamUrl || `/api/files/${activeMedia.id}/stream`}
                   controls
                   autoPlay
                   className="viewer-video"
                 />
               ) : (
                 <img
-                  src={`/api/files/${activeMedia.id}/view`}
+                  src={activeMedia.viewUrl || `/api/files/${activeMedia.id}/view`}
                   alt={activeMedia.originalName}
                   className="viewer-image"
                 />
               )}
             </div>
             
-            <div className="viewer-footer">
+            <div className={`viewer-footer ${showDetails ? 'open' : ''}`}>
               <div className="viewer-meta">
                 <h3 className="viewer-title">{activeMedia.originalName}</h3>
                 <p className="viewer-subtitle">
@@ -439,21 +496,21 @@ export default function FavoritesPage() {
                   onClick={(e) => toggleFavorite(activeMedia.id, activeMediaIndex!, e)}
                   title="Remove from favorites"
                 >
-                  ★ Favorited
+                  ★ <span className="btn-label">Favorited</span>
                 </button>
                 <button
                   className="viewer-download-btn"
                   onClick={() => window.open(`/api/files/${activeMedia.id}/download`)}
                   title="Download file"
                 >
-                  📥 Download
+                  📥 <span className="btn-label">Download</span>
                 </button>
                 <button
                   className="viewer-delete-btn"
                   onClick={(e) => handleDelete(activeMedia.id, activeMediaIndex!, e)}
                   title="Move to trash"
                 >
-                  🗑️ Delete
+                  🗑️ <span className="btn-label">Delete</span>
                 </button>
               </div>
             </div>

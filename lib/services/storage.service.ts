@@ -17,7 +17,7 @@ export class StorageService {
     let thumbnailBuffer: Buffer | null = null
     const isImage = mimeType.startsWith('image/')
     const isVideo = mimeType.startsWith('video/')
-    const thumbName = `thumb-${fileName}.jpg`
+    const thumbName = `thumb-${fileName}.webp`
 
     try {
       if (isImage) {
@@ -63,7 +63,7 @@ export class StorageService {
             fileName: thumbName,
             originalName: thumbName,
             providerFileId: uploadResult.thumbnail.providerFileId,
-            mimeType: 'image/jpeg',
+            mimeType: 'image/webp',
             fileSize: uploadResult.thumbnail.size,
           },
         })

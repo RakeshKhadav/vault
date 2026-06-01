@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../lib/db'
 import { AuthService } from '../../../lib/services/auth.service'
+import { StorageManager } from '../../../lib/storage/manager'
+import { decrypt } from '../../../lib/storage/encryption'
 
 async function verifyAuth(req: NextRequest) {
   const accessToken = req.cookies.get('accessToken')?.value
@@ -62,7 +64,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Fetch limit + 1 items to see if there is a next page
+    // Fetch limit + 1 items with optimized select block to avoid fetching large records
     const files = await db.file.findMany({
       where: whereClause,
       take: limit + 1,
@@ -71,17 +73,75 @@ export async function GET(req: NextRequest) {
       orderBy: [
         { uploadedAt: 'desc' },
         { id: 'desc' }
-      ]
+      ],
+      select: {
+        id: true,
+        fileName: true,
+        originalName: true,
+        mimeType: true,
+        fileSize: true,
+        isFavorite: true,
+        uploadedAt: true,
+        providerFileId: true,
+        thumbnailFileId: true,
+        storageNode: {
+          select: {
+            id: true,
+            provider: true,
+            credentialsJson: true,
+          }
+        },
+        thumbnail: {
+          select: {
+            id: true,
+            providerFileId: true,
+          }
+        }
+      }
     })
 
     const hasMore = files.length > limit
     const paginatedFiles = hasMore ? files.slice(0, limit) : files
     const nextCursor = hasMore ? paginatedFiles[paginatedFiles.length - 1].id : null
 
-    // Format BigInt values to string for JSON serialization
-    const formattedFiles = paginatedFiles.map(file => ({
-      ...file,
-      fileSize: file.fileSize.toString(),
+    // Map files and generate pre-signed direct URLs in parallel
+    const formattedFiles = await Promise.all(paginatedFiles.map(async (file) => {
+      let thumbnailUrl: string | null = null
+      let viewUrl: string | null = null
+      let streamUrl: string | null = null
+
+      try {
+        const provider = StorageManager.getProvider(file.storageNode.provider)
+        const credentialsStr = decrypt(file.storageNode.credentialsJson)
+
+        // Generate pre-signed URL for WebP thumbnail directly pointing to B2
+        if (file.thumbnail) {
+          thumbnailUrl = await provider.generateViewUrl(credentialsStr, file.thumbnail.providerFileId)
+        }
+
+        // Generate pre-signed URLs for high-resolution images or video stream
+        if (file.mimeType.startsWith('video/')) {
+          streamUrl = await provider.generateStreamUrl(credentialsStr, file.providerFileId)
+        } else if (file.mimeType.startsWith('image/')) {
+          viewUrl = await provider.generateViewUrl(credentialsStr, file.providerFileId)
+        }
+      } catch (err) {
+        console.error(`Failed to generate pre-signed URL for file ${file.id}:`, err)
+      }
+
+      return {
+        id: file.id,
+        fileName: file.fileName,
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        fileSize: file.fileSize.toString(),
+        isFavorite: file.isFavorite,
+        thumbnailFileId: file.thumbnailFileId,
+        uploadedAt: file.uploadedAt.toISOString(),
+        thumbnailUrl,
+        viewUrl,
+        streamUrl,
+      }
     }))
 
     return NextResponse.json({

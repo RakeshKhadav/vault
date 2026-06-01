@@ -8,7 +8,7 @@ export class MediaProcessor {
   static async generateImageThumbnail(fileBuffer: Buffer): Promise<Buffer> {
     return sharp(fileBuffer)
       .resize({ width: 300, withoutEnlargement: true })
-      .jpeg({ quality: 80 })
+      .webp({ quality: 80 })
       .toBuffer()
   }
 
@@ -36,7 +36,7 @@ export class MediaProcessor {
             const frameBuffer = await fs.promises.readFile(tempFramePath)
             const thumbnail = await sharp(frameBuffer)
               .resize({ width: 300, withoutEnlargement: true })
-              .jpeg({ quality: 80 })
+              .webp({ quality: 80 })
               .toBuffer()
 
             // Cleanup temp files

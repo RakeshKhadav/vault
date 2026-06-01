@@ -47,11 +47,15 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
 
   // Fullscreen Viewer State
   const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
 
   // Share Modal State
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
+
+  // Filters Collapsible State (Mobile)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Selection Mode State
   const [isSelectMode, setIsSelectMode] = useState(false)
@@ -326,17 +330,28 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
     e?.stopPropagation()
     if (activeMediaIndex === null || files.length === 0) return
     setActiveMediaIndex((prev) => (prev === 0 ? files.length - 1 : prev! - 1))
+    setShowDetails(false)
   }, [activeMediaIndex, files])
 
   const handleNext = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (activeMediaIndex === null || files.length === 0) return
     setActiveMediaIndex((prev) => (prev === files.length - 1 ? 0 : prev! + 1))
+    setShowDetails(false)
   }, [activeMediaIndex, files])
 
   const handleClose = useCallback(() => {
     setActiveMediaIndex(null)
+    setShowDetails(false)
   }, [])
+
+  const handleOverlayClick = useCallback(() => {
+    if (showDetails) {
+      setShowDetails(false)
+    } else {
+      handleClose()
+    }
+  }, [showDetails, handleClose])
 
   // Keyboard navigation
   useEffect(() => {
@@ -402,41 +417,52 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
           />
         </div>
 
-        <div className="toolbar-divider" />
+        {/* Small filters toggle button on mobile */}
+        <button
+          className={`filter-toggle-btn ${filtersOpen ? 'active' : ''}`}
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          aria-label="Toggle filters"
+        >
+          🎛️ Filters
+        </button>
 
-        <div className="filter-tabs">
-          <button
-            className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('all')}
-          >
-            All
-          </button>
-          <button
-            className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('image')}
-          >
-            Photos
-          </button>
-          <button
-            className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('video')}
-          >
-            Videos
-          </button>
-        </div>
+        <div className={`gallery-filters-collapsible ${filtersOpen ? 'open' : ''}`}>
+          <div className="toolbar-divider" />
 
-        <div className="toolbar-divider" />
-
-        <div className="date-presets">
-          {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
+          <div className="filter-tabs">
             <button
-              key={preset}
-              className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
-              onClick={() => applyDatePreset(preset)}
+              className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setTypeFilter('all')}
             >
-              {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
+              All
             </button>
-          ))}
+            <button
+              className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
+              onClick={() => setTypeFilter('image')}
+            >
+              Photos
+            </button>
+            <button
+              className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
+              onClick={() => setTypeFilter('video')}
+            >
+              Videos
+            </button>
+          </div>
+
+          <div className="toolbar-divider" />
+
+          <div className="date-presets">
+            {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
+              <button
+                key={preset}
+                className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
+                onClick={() => applyDatePreset(preset)}
+              >
+                {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="toolbar-divider" />
@@ -609,9 +635,13 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
 
       {/* Fullscreen Media Viewer Modal */}
       {activeMedia && (
-        <div className="viewer-overlay" onClick={handleClose}>
+        <div className="viewer-overlay" onClick={handleOverlayClick}>
           <button className="viewer-close-btn" onClick={handleClose} aria-label="Close viewer">
             ✕
+          </button>
+          
+          <button className="viewer-more-btn" onClick={(e) => { e.stopPropagation(); setShowDetails(!showDetails); }} aria-label="Toggle details">
+            ⋮
           </button>
           
           <button className="viewer-nav-btn prev" onClick={handlePrev} aria-label="Previous">
@@ -639,7 +669,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
               )}
             </div>
             
-            <div className="viewer-footer">
+            <div className={`viewer-footer ${showDetails ? 'open' : ''}`}>
               <div className="viewer-meta">
                 <h3 className="viewer-title">{activeMedia.originalName}</h3>
                 <p className="viewer-subtitle">
@@ -652,28 +682,28 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
                   onClick={(e) => toggleFavorite(activeMedia.id, activeMediaIndex!, e)}
                   title={activeMedia.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                 >
-                  ★ {activeMedia.isFavorite ? 'Favorited' : 'Favorite'}
+                  ★ <span className="btn-label">{activeMedia.isFavorite ? 'Favorited' : 'Favorite'}</span>
                 </button>
                 <button
                   className="viewer-download-btn"
                   onClick={() => window.open(`/api/files/${activeMedia.id}/download`)}
                   title="Download file"
                 >
-                  📥 Download
+                  📥 <span className="btn-label">Download</span>
                 </button>
                 <button
                   className="viewer-share-btn"
                   onClick={(e) => handleShare(activeMedia.id, e)}
                   title="Share file"
                 >
-                  🔗 Share
+                  🔗 <span className="btn-label">Share</span>
                 </button>
                 <button
                   className="viewer-delete-btn"
                   onClick={(e) => handleDelete(activeMedia.id, activeMediaIndex!, e)}
                   title="Move to trash"
                 >
-                  🗑️ Delete
+                  🗑️ <span className="btn-label">Delete</span>
                 </button>
               </div>
             </div>

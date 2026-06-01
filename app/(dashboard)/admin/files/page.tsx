@@ -173,12 +173,12 @@ export default function AdminFilesPage() {
               <tbody>
                 {files.map((file) => (
                   <tr key={file.id}>
-                    <td style={{ fontWeight: '500', wordBreak: 'break-all' }}>{file.originalName}</td>
-                    <td>{file.user?.email || 'Unknown User'}</td>
-                    <td>{file.mimeType}</td>
-                    <td>{formatBytes(file.fileSize)}</td>
-                    <td>{new Date(file.uploadedAt).toLocaleString()}</td>
-                    <td>
+                    <td data-label="File Name" style={{ fontWeight: '500', wordBreak: 'break-all' }}>{file.originalName}</td>
+                    <td data-label="Owner">{file.user?.email || 'Unknown User'}</td>
+                    <td data-label="MIME Type">{file.mimeType}</td>
+                    <td data-label="Size">{formatBytes(file.fileSize)}</td>
+                    <td data-label="Uploaded At">{new Date(file.uploadedAt).toLocaleString()}</td>
+                    <td data-label="Actions">
                       <div className="admin-actions">
                         <a
                           href={`/api/admin/files/${file.id}/download`}

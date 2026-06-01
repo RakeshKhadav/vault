@@ -7,7 +7,14 @@ import { db } from '../../db'
 import { decrypt } from '../encryption'
 
 export class B2Provider implements StorageProvider {
+  private static clientCache = new Map<string, { client: S3Client; bucketName: string; bucketLimitGb: number }>()
+
   private getS3Client(credentialsJson: string): { client: S3Client; bucketName: string; bucketLimitGb: number } {
+    const cached = B2Provider.clientCache.get(credentialsJson)
+    if (cached) {
+      return cached
+    }
+
     try {
       const creds = JSON.parse(credentialsJson)
       if (!creds.endpoint || !creds.region || !creds.keyID || !creds.applicationKey || !creds.bucketName) {
@@ -25,11 +32,14 @@ export class B2Provider implements StorageProvider {
         },
       })
 
-      return {
+      const result = {
         client,
         bucketName: creds.bucketName,
         bucketLimitGb: creds.bucketLimitGb ? Number(creds.bucketLimitGb) : 10000, // 10TB fallback
       }
+
+      B2Provider.clientCache.set(credentialsJson, result)
+      return result
     } catch (err: any) {
       throw new Error(`Failed to parse Backblaze B2 credentials: ${err.message}`)
     }

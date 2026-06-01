@@ -37,16 +37,22 @@ export default function AdminBackupsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
 
   async function fetchBackups() {
     setLoading(true)
     setError(null)
     try {
-      const url = statusFilter 
-        ? `/api/admin/backups?status=${statusFilter}`
-        : '/api/admin/backups'
+      const params = new URLSearchParams()
+      params.append('page', page.toString())
+      params.append('limit', '10')
+      if (statusFilter) {
+        params.append('status', statusFilter)
+      }
       
-      const res = await fetch(url)
+      const res = await fetch(`/api/admin/backups?${params.toString()}`)
       if (!res.ok) {
         if (res.status === 403) {
           setError('Access denied. Admin privileges required.')
@@ -57,6 +63,8 @@ export default function AdminBackupsPage() {
       }
       const data = await res.json()
       setBackups(data.backups || [])
+      setTotalPages(data.pagination?.totalPages || 1)
+      setTotalCount(data.pagination?.totalCount || 0)
     } catch {
       setError('Connection error fetching backup tasks.')
     } finally {
@@ -65,8 +73,12 @@ export default function AdminBackupsPage() {
   }
 
   useEffect(() => {
-    fetchBackups()
+    setPage(1)
   }, [statusFilter])
+
+  useEffect(() => {
+    fetchBackups()
+  }, [statusFilter, page])
 
   async function handleRetry(backupId: string) {
     try {
@@ -74,14 +86,7 @@ export default function AdminBackupsPage() {
         method: 'POST',
       })
       if (res.ok) {
-        // Success: update item status locally to pending and attempts to 0
-        setBackups(prevBackups =>
-          prevBackups.map(b =>
-            b.id === backupId
-              ? { ...b, status: 'PENDING', attempts: 0, errorMessage: null }
-              : b
-          )
-        )
+        fetchBackups()
       } else {
         const data = await res.json()
         alert(data.message || 'Failed to trigger backup retry.')
@@ -108,8 +113,8 @@ export default function AdminBackupsPage() {
         >
           <option value="">All Statuses</option>
           <option value="SUCCESS">Success</option>
-          <option value="PENDING">Pending</option>
           <option value="FAILED">Failed</option>
+          <option value="BOTH">Both (Success & Failed)</option>
         </select>
       </div>
 
@@ -128,76 +133,104 @@ export default function AdminBackupsPage() {
           <p className="placeholder-description">There are no files queued or uploaded to Telegram cold storage yet.</p>
         </div>
       ) : (
-        <div className="admin-table-container">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>File / Size</th>
-                <th>Owner</th>
-                <th>Provider</th>
-                <th>Status</th>
-                <th>Attempts</th>
-                <th>Details / Error</th>
-                <th>Created At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {backups.map((backup) => (
-                <tr key={backup.id}>
-                  <td style={{ fontWeight: '500', wordBreak: 'break-all' }}>
-                    {backup.file ? (
-                      <>
-                        <div style={{ fontWeight: '600' }}>{backup.file.originalName}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#8f95a3', marginTop: '0.25rem' }}>
-                          {formatBytes(backup.file.fileSize)}
-                        </div>
-                      </>
-                    ) : (
-                      <span style={{ color: '#ef4444', fontStyle: 'italic' }}>Orphaned File</span>
-                    )}
-                  </td>
-                  <td>{backup.file?.user?.email || 'N/A'}</td>
-                  <td>
-                    <span className="provider-badge" style={{ margin: 0 }}>
-                      {backup.backupProvider || 'TELEGRAM'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`admin-badge status-${backup.status.toLowerCase()}`}>
-                      {backup.status}
-                    </span>
-                  </td>
-                  <td>{backup.attempts} / 3</td>
-                  <td style={{ maxWidth: '300px' }}>
-                    {backup.errorMessage ? (
-                      <div className="admin-error-box">{backup.errorMessage}</div>
-                    ) : backup.backupFileId ? (
-                      <code style={{ fontSize: '0.75rem', color: '#10b981', wordBreak: 'break-all' }}>
-                        ID: {backup.backupFileId}
-                      </code>
-                    ) : (
-                      <span style={{ color: '#8f95a3', fontSize: '0.8rem', fontStyle: 'italic' }}>—</span>
-                    )}
-                  </td>
-                  <td>{new Date(backup.createdAt).toLocaleString()}</td>
-                  <td>
-                    <div className="admin-actions">
-                      <button
-                        onClick={() => handleRetry(backup.id)}
-                        disabled={backup.status === 'SUCCESS'}
-                        className="btn-admin-action primary"
-                        style={{ opacity: backup.status === 'SUCCESS' ? 0.5 : 1 }}
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  </td>
+        <>
+          <div className="admin-table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>File / Size</th>
+                  <th>Owner</th>
+                  <th>Provider</th>
+                  <th>Status</th>
+                  <th>Attempts</th>
+                  <th>Details / Error</th>
+                  <th>Created At</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {backups.map((backup) => (
+                  <tr key={backup.id}>
+                    <td data-label="File / Size" style={{ fontWeight: '500', wordBreak: 'break-all' }}>
+                      {backup.file ? (
+                        <>
+                          <div style={{ fontWeight: '600' }}>{backup.file.originalName}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#8f95a3', marginTop: '0.25rem' }}>
+                            {formatBytes(backup.file.fileSize)}
+                          </div>
+                        </>
+                      ) : (
+                        <span style={{ color: '#ef4444', fontStyle: 'italic' }}>Orphaned File</span>
+                      )}
+                    </td>
+                    <td data-label="Owner">{backup.file?.user?.email || 'N/A'}</td>
+                    <td data-label="Provider">
+                      <span className="provider-badge" style={{ margin: 0 }}>
+                        {backup.backupProvider || 'TELEGRAM'}
+                      </span>
+                    </td>
+                    <td data-label="Status">
+                      <span className={`admin-badge status-${backup.status.toLowerCase()}`}>
+                        {backup.status}
+                      </span>
+                    </td>
+                    <td data-label="Attempts">{backup.attempts} / 3</td>
+                    <td data-label="Details / Error" style={{ maxWidth: '300px' }}>
+                      {backup.status === 'SUCCESS' ? (
+                        <span className="admin-badge status-success" style={{ margin: 0, textTransform: 'capitalize' }}>
+                          success
+                        </span>
+                      ) : backup.status === 'FAILED' ? (
+                        <span className="admin-badge status-failed" style={{ margin: 0, textTransform: 'capitalize' }}>
+                          failed
+                        </span>
+                      ) : (
+                        <span className="admin-badge status-pending" style={{ margin: 0, textTransform: 'capitalize' }}>
+                          pending
+                        </span>
+                      )}
+                    </td>
+                    <td data-label="Created At">{new Date(backup.createdAt).toLocaleString()}</td>
+                    <td data-label="Actions">
+                      <div className="admin-actions">
+                        <button
+                          onClick={() => handleRetry(backup.id)}
+                          disabled={backup.status === 'SUCCESS'}
+                          className="btn-admin-action primary"
+                          style={{ opacity: backup.status === 'SUCCESS' ? 0.5 : 1 }}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="admin-pagination">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="btn-admin-nav"
+              >
+                ← Previous
+              </button>
+              <span style={{ fontSize: '0.875rem', color: 'var(--auth-text-muted)' }}>
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="btn-admin-nav"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

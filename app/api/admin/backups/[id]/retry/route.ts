@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../../lib/db'
 import { AuthService } from '../../../../../../lib/services/auth.service'
+import { BackupService } from '../../../../../../lib/services/backup.service'
 
 async function verifyAdmin(req: NextRequest) {
   const accessToken = req.cookies.get('accessToken')?.value
@@ -38,8 +39,16 @@ export async function POST(
         status: 'PENDING',
         attempts: 0,
         errorMessage: null,
+        backupFileId: null,
       },
     })
+
+    // Process synchronously so UI receives updated state immediately
+    try {
+      await BackupService.processBackupJob(id)
+    } catch (err) {
+      console.error('Error in synchronous backup processing:', err)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

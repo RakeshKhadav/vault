@@ -89,16 +89,16 @@ export default function AdminUsersPage() {
             <tbody>
               {users.map((user) => (
                 <tr key={user.id}>
-                  <td style={{ fontWeight: '500' }}>{user.email}</td>
-                  <td>
+                  <td data-label="Email Address" style={{ fontWeight: '500' }}>{user.email}</td>
+                  <td data-label="Role">
                     <span className={`admin-badge ${user.role === 'ADMIN' ? 'role-admin' : 'role-user'}`}>
                       {user.role}
                     </span>
                   </td>
-                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                  <td>{user.filesCount}</td>
-                  <td>{formatBytes(user.storageUsedBytes)}</td>
-                  <td>
+                  <td data-label="Registered At">{new Date(user.createdAt).toLocaleDateString()}</td>
+                  <td data-label="Total Files">{user.filesCount}</td>
+                  <td data-label="Storage Occupied">{formatBytes(user.storageUsedBytes)}</td>
+                  <td data-label="Actions">
                     <Link
                       href={`/admin/users/${user.id}`}
                       className="btn-admin-nav"
