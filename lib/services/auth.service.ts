@@ -3,8 +3,12 @@ import jwt from 'jsonwebtoken'
 import { db } from '../db'
 import { NextResponse } from 'next/server'
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback-access-secret'
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret'
+const JWT_ACCESS_SECRET: string = process.env.JWT_ACCESS_SECRET || ''
+const JWT_REFRESH_SECRET: string = process.env.JWT_REFRESH_SECRET || ''
+
+if (!JWT_ACCESS_SECRET || !JWT_REFRESH_SECRET) {
+  throw new Error('[Security] Critical Configuration Error: JWT_ACCESS_SECRET or JWT_REFRESH_SECRET environment variable is missing!')
+}
 
 export interface JWTPayload {
   userId: string

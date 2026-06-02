@@ -1,6 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { sharedUploadQueue } from '@/lib/shared-upload-queue'
+import { useMediaViewer } from '@/lib/hooks/useMediaViewer'
+import { MediaViewer } from '@/components/gallery/MediaViewer'
+import { MediaGrid } from '@/components/gallery/MediaGrid'
+import { GalleryToolbar } from '@/components/gallery/GalleryToolbar'
+import { formatBytes as formatSize } from '@/lib/utils/format'
 
 interface MediaFile {
   id: string
@@ -16,132 +23,164 @@ interface MediaFile {
   streamUrl?: string | null
 }
 
-export default function GalleryPage() {
+function GalleryPageContent() {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   
-  // Filters
-  const [typeFilter, setTypeFilter] = useState<'all' | 'image' | 'video'>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [datePreset, setDatePreset] = useState<'anytime' | 'today' | 'week' | 'month' | 'year'>('anytime')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
 
-  // Fullscreen Viewer State
-  const [activeMediaIndex, setActiveMediaIndex] = useState<number | null>(null)
-  const [showDetails, setShowDetails] = useState(false)
+  const typeFilter = (searchParams.get('type') || 'all') as 'all' | 'image' | 'video'
+  const debouncedSearch = searchParams.get('search') || ''
+  const startDate = searchParams.get('startDate') || ''
+  const endDate = searchParams.get('endDate') || ''
+  const datePreset = (searchParams.get('preset') || 'anytime') as 'anytime' | 'today' | 'week' | 'month' | 'year'
 
-  // Share Modal State
+  const [searchQuery, setSearchQuery] = useState(debouncedSearch)
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
+
+  useEffect(() => {
+    setSearchQuery(debouncedSearch)
+  }, [debouncedSearch])
+
+  const updateFilters = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('cursor')
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null || value === '' || value === 'all' || (key === 'preset' && value === 'anytime')) {
+        params.delete(key)
+      } else {
+        params.set(key, value)
+      }
+    })
+
+    router.push(`${pathname}?${params.toString()}`)
+  }, [searchParams, router, pathname])
+
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
 
-  // Filters Collapsible State (Mobile)
-  const [filtersOpen, setFiltersOpen] = useState(false)
-
-  // Selection Mode State
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkDownloading, setIsBulkDownloading] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const lastSelectedIndex = useRef<number | null>(null)
 
-  // Apply date preset
   const applyDatePreset = (preset: 'anytime' | 'today' | 'week' | 'month' | 'year') => {
-    setDatePreset(preset)
     const now = new Date()
+    let start = ''
+    let end = ''
     
-    if (preset === 'anytime') {
-      setStartDate('')
-      setEndDate('')
-    } else if (preset === 'today') {
+    if (preset === 'today') {
       const todayStr = now.toISOString().split('T')[0]
-      setStartDate(todayStr)
-      setEndDate(todayStr)
+      start = todayStr
+      end = todayStr
     } else if (preset === 'week') {
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      setStartDate(oneWeekAgo.toISOString().split('T')[0])
-      setEndDate(now.toISOString().split('T')[0])
+      start = oneWeekAgo.toISOString().split('T')[0]
+      end = now.toISOString().split('T')[0]
     } else if (preset === 'month') {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-      setStartDate(firstDay.toISOString().split('T')[0])
-      setEndDate(now.toISOString().split('T')[0])
+      start = firstDay.toISOString().split('T')[0]
+      end = now.toISOString().split('T')[0]
     } else if (preset === 'year') {
       const firstDayOfYear = new Date(now.getFullYear(), 0, 1)
-      setStartDate(firstDayOfYear.toISOString().split('T')[0])
-      setEndDate(now.toISOString().split('T')[0])
+      start = firstDayOfYear.toISOString().split('T')[0]
+      end = now.toISOString().split('T')[0]
     }
+
+    updateFilters({
+      preset: preset === 'anytime' ? null : preset,
+      startDate: start || null,
+      endDate: end || null
+    })
   }
 
-  // Clear selection when leaving select mode or when filters change
   const exitSelectMode = useCallback(() => {
     setIsSelectMode(false)
     setSelectedIds(new Set())
+    lastSelectedIndex.current = null
   }, [])
 
   const toggleFileSelection = useCallback((fileId: string, event?: React.MouseEvent) => {
     event?.stopPropagation()
+    const currentIndex = files.findIndex((f) => f.id === fileId)
+    if (currentIndex === -1) return
+
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      if (next.has(fileId)) {
-        next.delete(fileId)
+      if (event?.shiftKey && lastSelectedIndex.current !== null) {
+        const start = Math.min(lastSelectedIndex.current, currentIndex)
+        const end = Math.max(lastSelectedIndex.current, currentIndex)
+        const shouldSelect = !prev.has(fileId)
+        for (let i = start; i <= end; i++) {
+          const file = files[i]
+          if (file) {
+            if (shouldSelect) next.add(file.id)
+            else next.delete(file.id)
+          }
+        }
       } else {
-        next.add(fileId)
+        if (next.has(fileId)) next.delete(fileId)
+        else next.add(fileId)
       }
       return next
     })
-  }, [])
-
-  const selectAll = useCallback(() => {
-    setSelectedIds(new Set(files.map((f) => f.id)))
+    lastSelectedIndex.current = currentIndex
   }, [files])
 
+  const selectAll = useCallback(() => setSelectedIds(new Set(files.map((f) => f.id))), [files])
   const deselectAll = useCallback(() => {
     setSelectedIds(new Set())
+    lastSelectedIndex.current = null
   }, [])
 
   const handleBulkDownload = useCallback(async () => {
     if (selectedIds.size === 0) return
     setIsBulkDownloading(true)
     try {
-      const res = await fetch('/api/files/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileIds: Array.from(selectedIds) }),
-      })
-      if (!res.ok) throw new Error('Failed to generate download links')
-      const data = await res.json()
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
 
-      // Stagger opening download links to avoid browser popup blocking
-      for (const dl of data.downloads) {
-        const a = document.createElement('a')
-        a.href = dl.url
-        a.download = ''
-        a.style.display = 'none'
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        // Small delay to avoid browser throttling multiple downloads
-        await new Promise((r) => setTimeout(r, 300))
-      }
+      const promises = Array.from(selectedIds).map(async (id) => {
+        const fileObj = files.find((f) => f.id === id)
+        const name = fileObj ? fileObj.originalName : `file-${id}`
+        const fileRes = await fetch(`/api/files/${id}/download`)
+        if (!fileRes.ok) throw new Error(`Failed to download file: ${name}`)
+        const blob = await fileRes.blob()
+        zip.file(name, blob)
+      })
+
+      await Promise.all(promises)
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = window.URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `vault-export-${Date.now()}.zip`
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Bulk download failed:', err)
-      alert('Failed to download selected files. Please try again.')
+      alert('Failed to download selected files.')
     } finally {
       setIsBulkDownloading(false)
     }
-  }, [selectedIds])
+  }, [selectedIds, files])
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`Are you sure you want to move the ${selectedIds.size} selected files to trash?`)) {
-      return
-    }
+    if (!confirm(`Are you sure you want to move the ${selectedIds.size} selected files to trash?`)) return
     setIsBulkDeleting(true)
     try {
       const res = await fetch('/api/files/delete', {
@@ -150,62 +189,39 @@ export default function GalleryPage() {
         body: JSON.stringify({ fileIds: Array.from(selectedIds) }),
       })
       if (!res.ok) throw new Error('Failed to delete selected files')
-      
       setFiles((prev) => prev.filter((f) => !selectedIds.has(f.id)))
       exitSelectMode()
     } catch (err) {
       console.error('Bulk delete failed:', err)
-      alert('Failed to delete selected files. Please try again.')
+      alert('Failed to delete selected files.')
     } finally {
       setIsBulkDeleting(false)
     }
   }, [selectedIds, exitSelectMode])
 
-  // Debounce search query
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedSearch(searchQuery)
+      if (searchQuery !== debouncedSearch) updateFilters({ search: searchQuery })
     }, 300)
     return () => clearTimeout(handler)
-  }, [searchQuery])
+  }, [searchQuery, debouncedSearch, updateFilters])
 
-  // Fetch initial files
   const fetchFiles = useCallback(async (isFirstLoad = true, currentCursor: string | null = null) => {
-    if (isFirstLoad) {
-      setIsLoading(true)
-    } else {
-      setIsLoadingMore(true)
-    }
-
+    if (isFirstLoad) setIsLoading(true)
+    else setIsLoadingMore(true)
     try {
       const params = new URLSearchParams()
       params.append('limit', '24')
-      if (typeFilter !== 'all') {
-        params.append('type', typeFilter)
-      }
-      if (debouncedSearch) {
-        params.append('search', debouncedSearch)
-      }
-      if (startDate) {
-        params.append('startDate', startDate)
-      }
-      if (endDate) {
-        params.append('endDate', endDate)
-      }
-      if (currentCursor) {
-        params.append('cursor', currentCursor)
-      }
-
+      if (typeFilter !== 'all') params.append('type', typeFilter)
+      if (debouncedSearch) params.append('search', debouncedSearch)
+      if (startDate) params.append('startDate', startDate)
+      if (endDate) params.append('endDate', endDate)
+      if (currentCursor) params.append('cursor', currentCursor)
       const res = await fetch(`/api/files?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch files')
-
       const data = await res.json()
-
-      if (isFirstLoad) {
-        setFiles(data.files)
-      } else {
-        setFiles((prev) => [...prev, ...data.files])
-      }
+      if (isFirstLoad) setFiles(data.files)
+      else setFiles((prev) => [...prev, ...data.files])
       setCursor(data.nextCursor)
       setHasMore(!!data.nextCursor)
     } catch (err) {
@@ -216,62 +232,80 @@ export default function GalleryPage() {
     }
   }, [typeFilter, debouncedSearch, startDate, endDate])
 
-  // Reload list when filters change; also clear selection
   useEffect(() => {
     fetchFiles(true, null)
     setSelectedIds(new Set())
+    lastSelectedIndex.current = null
   }, [fetchFiles])
 
-  // Infinite scroll trigger
-  const lastElementRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (isLoading || isLoadingMore) return
-      if (observerRef.current) observerRef.current.disconnect()
+  const lastLoadedRef = useRef(Date.now())
 
-      observerRef.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && hasMore && cursor) {
-          fetchFiles(false, cursor)
+  useEffect(() => {
+    lastLoadedRef.current = Date.now()
+  }, [files])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const ageMs = Date.now() - lastLoadedRef.current
+        if (ageMs > 45 * 60 * 1000) {
+          fetchFiles(true, null)
         }
-      })
+      }
+    }
 
-      if (node) observerRef.current.observe(node)
-    },
-    [isLoading, isLoadingMore, hasMore, cursor, fetchFiles]
-  )
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  const formatSize = (bytesStr: string) => {
-    const bytes = parseInt(bytesStr, 10)
-    if (isNaN(bytes)) return '0 B'
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    if (bytes === 0) return '0 Byte'
-    const i = Math.floor(Math.log(bytes) / Math.log(1024))
-    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+    const interval = setInterval(() => {
+      const ageMs = Date.now() - lastLoadedRef.current
+      if (ageMs > 45 * 60 * 1000) {
+        fetchFiles(true, null)
+      }
+    }, 5 * 60 * 1000)
 
-  const isVideo = (mimeType: string) => mimeType.startsWith('video/')
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(interval)
+    }
+  }, [fetchFiles])
 
-  // Toggling favorite
+  const lastElementRef = useCallback((node: HTMLDivElement | null) => {
+    if (isLoading || isLoadingMore) return
+    if (observerRef.current) observerRef.current.disconnect()
+    observerRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && cursor) fetchFiles(false, cursor)
+    })
+    if (node) observerRef.current.observe(node)
+  }, [isLoading, isLoadingMore, hasMore, cursor, fetchFiles])
+
+  const viewer = useMediaViewer({ files })
+
+  useEffect(() => {
+    if (!isSelectMode || viewer.activeMediaIndex !== null) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); exitSelectMode() }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll() }
+      if (e.key === 'Delete') { e.preventDefault(); handleBulkDelete() }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isSelectMode, viewer.activeMediaIndex, exitSelectMode, selectAll, handleBulkDelete])
+
   const toggleFavorite = async (fileId: string, index: number, event?: React.MouseEvent) => {
     event?.stopPropagation()
     const file = files[index]
     if (!file) return
-
     const isCurrentlyFavorite = file.isFavorite
-
-    // Optimistic UI update
     setFiles((prev) => {
       const updated = [...prev]
       updated[index] = { ...file, isFavorite: !isCurrentlyFavorite }
       return updated
     })
-
     try {
       const method = isCurrentlyFavorite ? 'DELETE' : 'POST'
       const res = await fetch(`/api/files/${fileId}/favorite`, { method })
       if (!res.ok) throw new Error('Failed to update favorite status')
     } catch (err) {
-      console.error(err)
-      // Revert optimistic update
       setFiles((prev) => {
         const reverted = [...prev]
         reverted[index] = { ...file, isFavorite: isCurrentlyFavorite }
@@ -283,15 +317,12 @@ export default function GalleryPage() {
   const handleDelete = async (fileId: string, index: number, event?: React.MouseEvent) => {
     event?.stopPropagation()
     if (!confirm('Are you sure you want to move this file to trash?')) return
-
     try {
       const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Failed to delete file')
-
       setFiles((prev) => prev.filter((_, i) => i !== index))
-      setActiveMediaIndex(null)
+      viewer.setActiveMediaIndex(null)
     } catch (err) {
-      console.error(err)
       alert('Failed to delete file.')
     }
   }
@@ -306,218 +337,93 @@ export default function GalleryPage() {
       setShareUrl(data.url)
       setIsShareModalOpen(true)
     } catch (err) {
-      console.error(err)
       alert('Failed to generate share link.')
     } finally {
       setIsSharing(false)
     }
   }
 
-  // Navigation handlers
-  const handlePrev = useCallback((e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    if (activeMediaIndex === null || files.length === 0) return
-    setActiveMediaIndex((prev) => (prev === 0 ? files.length - 1 : prev! - 1))
-    setShowDetails(false)
-  }, [activeMediaIndex, files])
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingOver(true)
+  }
 
-  const handleNext = useCallback((e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    if (activeMediaIndex === null || files.length === 0) return
-    setActiveMediaIndex((prev) => (prev === files.length - 1 ? 0 : prev! + 1))
-    setShowDetails(false)
-  }, [activeMediaIndex, files])
-
-  const handleClose = useCallback(() => {
-    setActiveMediaIndex(null)
-    setShowDetails(false)
-  }, [])
-
-  const handleOverlayClick = useCallback(() => {
-    if (showDetails) {
-      setShowDetails(false)
-    } else {
-      handleClose()
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingOver(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      sharedUploadQueue.addFiles(Array.from(e.dataTransfer.files))
+      router.push('/upload')
     }
-  }, [showDetails, handleClose])
-
-  // Keyboard navigation
-  useEffect(() => {
-    if (activeMediaIndex === null) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') {
-        handlePrev()
-      } else if (e.key === 'ArrowRight') {
-        handleNext()
-      } else if (e.key === 'Escape') {
-        handleClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeMediaIndex, handlePrev, handleNext, handleClose])
-
-  // CLIENT-SIDE VISUAL ANTICIPATION: Silently preload next and previous high-resolution images
-  useEffect(() => {
-    if (activeMediaIndex === null || files.length === 0) return
-
-    const preloadImage = (url: string) => {
-      const img = new Image()
-      img.src = url
-    }
-
-    // Preload previous image
-    const prevIndex = activeMediaIndex === 0 ? files.length - 1 : activeMediaIndex - 1
-    const prevFile = files[prevIndex]
-    if (prevFile && prevFile.viewUrl && prevFile.mimeType.startsWith('image/')) {
-      preloadImage(prevFile.viewUrl)
-    }
-
-    // Preload next image
-    const nextIndex = activeMediaIndex === files.length - 1 ? 0 : activeMediaIndex + 1
-    const nextFile = files[nextIndex]
-    if (nextFile && nextFile.viewUrl && nextFile.mimeType.startsWith('image/')) {
-      preloadImage(nextFile.viewUrl)
-    }
-  }, [activeMediaIndex, files])
-
-  const activeMedia = activeMediaIndex !== null ? files[activeMediaIndex] : null
+  }
 
   return (
-    <div className="page-container">
-      {/* Search and Filters Toolbar */}
-      <div className="gallery-toolbar">
-        <div className="search-wrapper">
-          <input
-            type="text"
-            placeholder="Search media..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="search-input"
-          />
-        </div>
-
-        {/* Small filters toggle button on mobile */}
-        <button
-          className={`filter-toggle-btn ${filtersOpen ? 'active' : ''}`}
-          onClick={() => setFiltersOpen(!filtersOpen)}
-          aria-label="Toggle filters"
+    <div className="page-container" onDragOver={handleDragOver}>
+      {isDraggingOver && (
+        <div 
+          className="gallery-drag-overlay"
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={(e) => { e.preventDefault(); setIsDraggingOver(false); }}
+          onDrop={handleDrop}
         >
-          🎛️ Filters
-        </button>
-
-        <div className={`gallery-filters-collapsible ${filtersOpen ? 'open' : ''}`}>
-          <div className="toolbar-divider" />
-
-          <div className="filter-tabs">
-            <button
-              className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setTypeFilter('all')}
-            >
-              All
-            </button>
-            <button
-              className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
-              onClick={() => setTypeFilter('image')}
-            >
-              Photos
-            </button>
-            <button
-              className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
-              onClick={() => setTypeFilter('video')}
-            >
-              Videos
-            </button>
-          </div>
-
-          <div className="toolbar-divider" />
-
-          <div className="date-presets">
-            {(['anytime', 'today', 'week', 'month', 'year'] as const).map((preset) => (
-              <button
-                key={preset}
-                className={`preset-tab ${datePreset === preset ? 'active' : ''}`}
-                onClick={() => applyDatePreset(preset)}
-              >
-                {preset === 'anytime' ? 'Anytime' : preset === 'week' ? 'This Week' : preset === 'month' ? 'This Month' : preset === 'year' ? 'This Year' : 'Today'}
-              </button>
-            ))}
+          <div className="drag-overlay-content">
+            <span className="drag-overlay-icon">📤</span>
+            <h2>Drop files anywhere to start uploading</h2>
+            <p>Your files will be automatically redirected and queued for upload</p>
           </div>
         </div>
+      )}
 
-        <div className="toolbar-divider" />
+      <GalleryToolbar
+        searchPlaceholder="Search media..."
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        typeFilter={typeFilter}
+        onTypeFilterChange={(type) => updateFilters({ type: type === 'all' ? null : type })}
+        datePreset={datePreset}
+        onDatePresetChange={(preset) => applyDatePreset(preset)}
+        extraActions={
+          <button
+            className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
+            onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
+          >
+            {isSelectMode ? '✕ Cancel' : '☐ Select'}
+          </button>
+        }
+      />
 
-        {/* Select Mode Toggle */}
-        <button
-          className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
-          onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
-        >
-          {isSelectMode ? '✕ Cancel' : '☐ Select'}
-        </button>
-      </div>
-
-      {/* Bulk Actions Bar — shown when in select mode */}
       {isSelectMode && (
         <div className="bulk-actions-bar">
           <div className="bulk-actions-left">
             <button className="bulk-action-link" onClick={selectedIds.size === files.length ? deselectAll : selectAll}>
               {selectedIds.size === files.length ? 'Deselect All' : 'Select All'}
             </button>
-            <span className="bulk-count">{selectedIds.size} selected</span>
+            <span className="bulk-selection-count">
+              {selectedIds.size} {selectedIds.size === 1 ? 'file' : 'files'} selected
+            </span>
           </div>
           <div className="bulk-actions-right">
-            <button
+            <button 
               className="bulk-download-btn"
-              disabled={selectedIds.size === 0 || isBulkDownloading}
               onClick={handleBulkDownload}
+              disabled={selectedIds.size === 0 || isBulkDownloading}
             >
-              {isBulkDownloading ? (
-                <><span className="btn-spinner" /> Downloading...</>
-              ) : (
-                <>📥 Download {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}</>
-              )}
+              {isBulkDownloading ? 'Downloading...' : '📥 Download Selected'}
             </button>
-            <button
+            <button 
               className="bulk-delete-btn"
-              disabled={selectedIds.size === 0 || isBulkDeleting}
               onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0 || isBulkDeleting}
             >
-              {isBulkDeleting ? (
-                <>Deleting...</>
-              ) : (
-                <>🗑️ Delete {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}</>
-              )}
+              {isBulkDeleting ? 'Deleting...' : '🗑️ Delete Selected'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Media Grid */}
-      {isLoading && files.length === 0 ? (
-        <div className="gallery-grid">
-          {Array.from({ length: 12 }).map((_, idx) => {
-            const aspectRatios = ['1/1', '16/9', '4/5', '3/2', '4/3', '1/1', '16/9', '3/2', '4/3', '4/5', '1/1', '3/2']
-            const aspect = aspectRatios[idx % aspectRatios.length]
-            const isVideo = idx % 3 === 0
-            return (
-              <div key={idx} className="media-card skeleton">
-                <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
-                  {isVideo && (
-                    <div className="skeleton-video-play">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-                <div className="skeleton-meta" />
-              </div>
-            )
-          })}
-        </div>
-      ) : files.length === 0 ? (
+      {files.length === 0 && !isLoading ? (
         <div className="gallery-placeholder">
           <p className="placeholder-icon">⊙</p>
           <h2>The collection is quiet.</h2>
@@ -528,183 +434,36 @@ export default function GalleryPage() {
           </p>
         </div>
       ) : (
-        <div className={`gallery-grid-wrapper ${isLoading ? 'gallery-updating' : ''}`}>
-          <div className="gallery-grid">
-            {files.map((file, index) => {
-              const isLast = index === files.length - 1
-              return (
-                <div
-                  key={file.id}
-                  ref={isLast ? lastElementRef : null}
-                  className={`media-card ${isSelectMode && selectedIds.has(file.id) ? 'selected' : ''}`}
-                  onClick={() => isSelectMode ? toggleFileSelection(file.id) : setActiveMediaIndex(index)}
-                >
-                  <div className="media-preview-wrapper">
-                    {/* Selection checkbox */}
-                    {isSelectMode && (
-                      <button
-                        className={`card-select-checkbox ${selectedIds.has(file.id) ? 'checked' : ''}`}
-                        onClick={(e) => toggleFileSelection(file.id, e)}
-                        aria-label={selectedIds.has(file.id) ? 'Deselect' : 'Select'}
-                      >
-                        {selectedIds.has(file.id) ? '✓' : ''}
-                      </button>
-                    )}
-                    {file.thumbnailUrl ? (
-                      <img
-                        src={file.thumbnailUrl}
-                        alt={file.originalName}
-                        loading="lazy"
-                        className="media-thumbnail"
-                      />
-                    ) : (
-                      <div className="media-icon-placeholder">
-                        {isVideo(file.mimeType) ? '🎬' : '📷'}
-                      </div>
-                    )}
-                    {isVideo(file.mimeType) && (
-                      <div className="video-badge">
-                        <span className="play-icon">▶</span>
-                      </div>
-                    )}
-                    
-                    <button
-                      className={`card-favorite-btn ${file.isFavorite ? 'active' : ''}`}
-                      onClick={(e) => toggleFavorite(file.id, index, e)}
-                      title={file.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                    >
-                      ★
-                    </button>
-                    <button
-                      className="card-download-btn"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        window.open(`/api/files/${file.id}/download`)
-                      }}
-                      title="Download file"
-                    >
-                      📥
-                    </button>
-                    <button
-                      className="card-share-btn"
-                      onClick={(e) => handleShare(file.id, e)}
-                      title="Share file"
-                    >
-                      🔗
-                    </button>
-                  </div>
-                  <div className="media-info">
-                    <span className="media-title" title={file.originalName}>
-                      {file.originalName}
-                    </span>
-                    <span className="media-size">{formatSize(file.fileSize)}</span>
-                  </div>
-                </div>
-              )
-            })}
-            
-            {isLoadingMore && Array.from({ length: 4 }).map((_, idx) => {
-              const aspectRatios = ['1/1', '16/9', '4/3', '3/2']
-              const aspect = aspectRatios[idx % aspectRatios.length]
-              const isVideo = idx % 2 === 0
-              return (
-                <div key={`more-skeleton-${idx}`} className="media-card skeleton">
-                  <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
-                    {isVideo && (
-                      <div className="skeleton-video-play">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <div className="skeleton-meta" />
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <MediaGrid
+          files={files}
+          isLoading={isLoading}
+          isLoadingMore={isLoadingMore}
+          isSelectMode={isSelectMode}
+          selectedIds={selectedIds}
+          toggleFileSelection={toggleFileSelection}
+          setActiveMediaIndex={viewer.setActiveMediaIndex}
+          toggleFavorite={toggleFavorite}
+          handleShare={handleShare}
+          lastElementRef={lastElementRef}
+        />
       )}
 
-      {/* Fullscreen Media Viewer Modal */}
-      {activeMedia && (
-        <div className="viewer-overlay" onClick={handleOverlayClick}>
-          <button className="viewer-close-btn" onClick={handleClose} aria-label="Close viewer">
-            ✕
-          </button>
-          
-          <button className="viewer-more-btn" onClick={(e) => { e.stopPropagation(); setShowDetails(!showDetails); }} aria-label="Toggle details">
-            ⋮
-          </button>
-          
-          <button className="viewer-nav-btn prev" onClick={handlePrev} aria-label="Previous">
-            ‹
-          </button>
-          <button className="viewer-nav-btn next" onClick={handleNext} aria-label="Next">
-            ›
-          </button>
+      <MediaViewer
+        activeMediaIndex={viewer.activeMediaIndex}
+        files={files}
+        resolvedUrls={viewer.resolvedUrls}
+        highResLoaded={viewer.highResLoaded}
+        setHighResLoaded={viewer.setHighResLoaded}
+        showDetails={viewer.showDetails}
+        setShowDetails={viewer.setShowDetails}
+        handlePrev={viewer.handlePrev}
+        handleNext={viewer.handleNext}
+        handleClose={viewer.handleClose}
+        onToggleFavorite={toggleFavorite}
+        onShare={handleShare}
+        onDelete={handleDelete}
+      />
 
-          <div className="viewer-content-wrapper" onClick={(e) => e.stopPropagation()}>
-            <div className="viewer-media-container">
-              {isVideo(activeMedia.mimeType) ? (
-                <video
-                  src={activeMedia.streamUrl || `/api/files/${activeMedia.id}/stream`}
-                  controls
-                  autoPlay
-                  className="viewer-video"
-                />
-              ) : (
-                <img
-                  src={activeMedia.viewUrl || `/api/files/${activeMedia.id}/view`}
-                  alt={activeMedia.originalName}
-                  className="viewer-image"
-                />
-              )}
-            </div>
-            
-            <div className={`viewer-footer ${showDetails ? 'open' : ''}`}>
-              <div className="viewer-meta">
-                <h3 className="viewer-title">{activeMedia.originalName}</h3>
-                <p className="viewer-subtitle">
-                  {formatSize(activeMedia.fileSize)} • {new Date(activeMedia.uploadedAt).toLocaleDateString()}
-                </p>
-              </div>
-              <div className="viewer-actions">
-                <button
-                  className={`viewer-favorite-btn ${activeMedia.isFavorite ? 'active' : ''}`}
-                  onClick={(e) => toggleFavorite(activeMedia.id, activeMediaIndex!, e)}
-                  title={activeMedia.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                >
-                  ★ <span className="btn-label">{activeMedia.isFavorite ? 'Favorited' : 'Favorite'}</span>
-                </button>
-                <button
-                  className="viewer-download-btn"
-                  onClick={() => window.open(`/api/files/${activeMedia.id}/download`)}
-                  title="Download file"
-                >
-                  📥 <span className="btn-label">Download</span>
-                </button>
-                <button
-                  className="viewer-share-btn"
-                  onClick={(e) => handleShare(activeMedia.id, e)}
-                  title="Share file"
-                >
-                  🔗 <span className="btn-label">Share</span>
-                </button>
-                <button
-                  className="viewer-delete-btn"
-                  onClick={(e) => handleDelete(activeMedia.id, activeMediaIndex!, e)}
-                  title="Move to trash"
-                >
-                  🗑️ <span className="btn-label">Delete</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Share Link Modal Overlay */}
       {isShareModalOpen && shareUrl && (
         <div className="modal-overlay" onClick={() => setIsShareModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center' }}>
@@ -738,5 +497,13 @@ export default function GalleryPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function GalleryPage() {
+  return (
+    <Suspense fallback={<div className="page-container">Loading gallery...</div>}>
+      <GalleryPageContent />
+    </Suspense>
   )
 }

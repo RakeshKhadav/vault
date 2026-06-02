@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import { formatBytes as formatSize } from '@/lib/utils/format'
 
 interface SharedFile {
   id: string
@@ -38,14 +39,7 @@ export default function PublicSharePage() {
     fetchSharedMetadata()
   }, [token])
 
-  const formatSize = (bytesStr: string) => {
-    const bytes = parseInt(bytesStr, 10)
-    if (isNaN(bytes)) return '0 Bytes'
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-    if (bytes === 0) return '0 Byte'
-    const i = Math.floor(Math.log(bytes) / Math.log(1024))
-    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+
 
   if (loading) {
     return (

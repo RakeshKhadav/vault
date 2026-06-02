@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { sharedUploadQueue } from '@/lib/shared-upload-queue'
 
 interface UploadFileState {
   id: string
@@ -24,6 +25,7 @@ export default function UploadPage() {
   const [history, setHistory] = useState<UploadJob[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
+  const activePollIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   async function fetchHistory() {
     try {
@@ -41,6 +43,27 @@ export default function UploadPage() {
 
   useEffect(() => {
     fetchHistory()
+
+    // Process files already in the shared queue
+    const queuedFiles = sharedUploadQueue.getAndClear()
+    if (queuedFiles.length > 0) {
+      addFilesToQueue(queuedFiles)
+    }
+
+    // Subscribe to any new files added while this page is mounted
+    const unsubscribe = sharedUploadQueue.subscribe(() => {
+      const newFiles = sharedUploadQueue.getAndClear()
+      if (newFiles.length > 0) {
+        addFilesToQueue(newFiles)
+      }
+    })
+
+    return () => {
+      unsubscribe()
+      activePollIntervals.current.forEach((intervalId) => clearInterval(intervalId))
+      activePollIntervals.current.clear()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function handleFileSelection(e: React.ChangeEvent<HTMLInputElement>) {
@@ -88,39 +111,104 @@ export default function UploadPage() {
   async function uploadFile(file: File, queueId: string) {
     setQueue((prev) =>
       prev.map((item) =>
-        item.id === queueId ? { ...item, status: 'UPLOADING', progress: 20 } : item
+        item.id === queueId ? { ...item, status: 'UPLOADING', progress: 0 } : item
       )
     )
 
-    const formData = new FormData()
-    formData.append('files', file)
-
     try {
-      const res = await fetch('/api/files/upload', {
+      // 1. Get presigned upload URL
+      const getUrlRes = await fetch('/api/files/upload-url', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
       })
 
-      const data = await res.json()
+      const urlData = await getUrlRes.json()
 
-      if (res.ok && data.jobIds?.length > 0) {
-        // Poll status of the specific job
-        pollJobStatus(data.jobIds[0], queueId)
-      } else {
+      if (!getUrlRes.ok) {
+        throw new Error(urlData.message || 'Failed to get upload URL')
+      }
+
+      const { uploadUrl, providerFileId, storageNodeId, jobId } = urlData
+
+      // 2. Perform direct upload to B2 via PUT
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', uploadUrl, true)
+      xhr.setRequestHeader('Content-Type', file.type)
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100)
+          const displayPercent = Math.min(percentComplete, 99)
+          setQueue((prev) =>
+            prev.map((item) =>
+              item.id === queueId ? { ...item, progress: displayPercent } : item
+            )
+          )
+        }
+      }
+
+      xhr.onload = async () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // 3. Confirm upload on backend
+          try {
+            const confirmRes = await fetch('/api/files/upload/confirm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jobId,
+                providerFileId,
+                storageNodeId,
+                fileName: file.name,
+                mimeType: file.type,
+                fileSize: file.size,
+              }),
+            })
+
+            const confirmData = await confirmRes.json()
+
+            if (confirmRes.ok) {
+              pollJobStatus(jobId, queueId)
+            } else {
+              throw new Error(confirmData.message || 'Failed to confirm upload')
+            }
+          } catch (confirmErr: any) {
+            setQueue((prev) =>
+              prev.map((item) =>
+                item.id === queueId
+                  ? { ...item, status: 'FAILED', progress: 100, error: confirmErr.message || 'Confirmation failed' }
+                  : item
+              )
+            )
+          }
+        } else {
+          setQueue((prev) =>
+            prev.map((item) =>
+              item.id === queueId
+                ? { ...item, status: 'FAILED', progress: 100, error: `Upload error (${xhr.status})` }
+                : item
+            )
+          )
+        }
+      }
+
+      xhr.onerror = () => {
         setQueue((prev) =>
           prev.map((item) =>
-            item.id === queueId
-              ? { ...item, status: 'FAILED', progress: 100, error: data.message || 'Upload failed' }
-              : item
+            item.id === queueId ? { ...item, status: 'FAILED', progress: 100, error: 'B2 connection failed' } : item
           )
         )
       }
-    } catch {
+
+      xhr.send(file)
+    } catch (err: any) {
       setQueue((prev) =>
         prev.map((item) =>
-          item.id === queueId
-            ? { ...item, status: 'FAILED', progress: 100, error: 'Network error occurred' }
-            : item
+          item.id === queueId ? { ...item, status: 'FAILED', progress: 100, error: err.message || 'Upload failed' } : item
         )
       )
     }
@@ -138,6 +226,7 @@ export default function UploadPage() {
 
           if (status === 'SUCCESS') {
             clearInterval(interval)
+            activePollIntervals.current.delete(queueId)
             setQueue((prev) =>
               prev.map((item) =>
                 item.id === queueId ? { ...item, status: 'SUCCESS', progress: 100 } : item
@@ -146,6 +235,7 @@ export default function UploadPage() {
             fetchHistory() // Refresh history logs
           } else if (status === 'FAILED') {
             clearInterval(interval)
+            activePollIntervals.current.delete(queueId)
             setQueue((prev) =>
               prev.map((item) =>
                 item.id === queueId
@@ -173,6 +263,7 @@ export default function UploadPage() {
 
       if (attempts > 30) {
         clearInterval(interval)
+        activePollIntervals.current.delete(queueId)
         setQueue((prev) =>
           prev.map((item) =>
             item.id === queueId ? { ...item, status: 'FAILED', progress: 100, error: 'Polling timeout' } : item
@@ -180,6 +271,7 @@ export default function UploadPage() {
         )
       }
     }, 1000)
+    activePollIntervals.current.set(queueId, interval)
   }
 
   return (

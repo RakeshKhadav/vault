@@ -1,14 +1,7 @@
-import { NextRequest } from 'next/server'
+import { verifyAuth } from '@/lib/utils/auth-helper'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../lib/db'
 import { StorageService } from '../../../../../lib/services/storage.service'
-import { AuthService } from '../../../../../lib/services/auth.service'
-
-async function verifyAuth(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-  return AuthService.verifyAccessToken(accessToken)
-}
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,27 +26,13 @@ export async function GET(
       return new Response('File not found', { status: 404 })
     }
 
-    const stream = user.role === 'ADMIN'
-      ? await StorageService.getDownloadStreamAdmin(id)
-      : await StorageService.getDownloadStream(id, user.userId)
+    const downloadUrl = user.role === 'ADMIN'
+      ? await StorageService.getDownloadUrlAdmin(id)
+      : await StorageService.getDownloadUrl(id, user.userId)
 
-    // Convert node Readable stream to Web Response stream
-    const webStream = new ReadableStream({
-      start(controller) {
-        stream.on('data', (chunk) => controller.enqueue(chunk))
-        stream.on('end', () => controller.close())
-        stream.on('error', (err) => controller.error(err))
-      },
-    })
-
-    return new Response(webStream, {
-      headers: {
-        'Content-Type': file.mimeType || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(file.originalName)}"`,
-      },
-    })
+    return NextResponse.redirect(downloadUrl, 307)
   } catch (error) {
-    console.error('Error streaming download:', error)
+    console.error('Error getting download URL:', error)
     return new Response('Internal server error', { status: 500 })
   }
 }

@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const user = await verifyAuth(req)
   if (!user) {
-    return new Response(null, { status: 401 })
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
   const { id } = await params
@@ -22,39 +22,33 @@ export async function GET(
         userId: user.role === 'ADMIN' ? undefined : user.userId,
         deletedAt: null,
       },
-      include: { 
+      include: {
         storageNode: true,
-        thumbnail: true,
       },
     })
 
-    if (!file || !file.thumbnail) {
-      return new Response(null, { status: 404 })
+    if (!file) {
+      return NextResponse.json({ message: 'File not found' }, { status: 404 })
     }
-
-    const thumbnail = file.thumbnail
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
     const credentialsStr = decrypt(file.storageNode.credentialsJson)
-    const stream = await provider.download(credentialsStr, thumbnail.providerFileId)
 
-    // Convert node Readable stream to Web Response stream
-    const webStream = new ReadableStream({
-      start(controller) {
-        stream.on('data', (chunk) => controller.enqueue(chunk))
-        stream.on('end', () => controller.close())
-        stream.on('error', (err) => controller.error(err))
-      },
-    })
+    let viewUrl: string | null = null
+    let streamUrl: string | null = null
 
-    return new Response(webStream, {
-      headers: {
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
+    if (file.mimeType.startsWith('video/')) {
+      streamUrl = await provider.generateStreamUrl(credentialsStr, file.providerFileId)
+    } else if (file.mimeType.startsWith('image/')) {
+      viewUrl = await provider.generateViewUrl(credentialsStr, file.providerFileId)
+    }
+
+    return NextResponse.json({
+      viewUrl,
+      streamUrl,
     })
   } catch (error) {
-    console.error('Error serving thumbnail:', error)
-    return new Response(null, { status: 500 })
+    console.error(`Error resolving lazy URL for file ${id}:`, error)
+    return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
   }
 }

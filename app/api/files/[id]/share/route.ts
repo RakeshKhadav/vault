@@ -1,14 +1,11 @@
+import { verifyAuth } from '@/lib/utils/auth-helper'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../lib/db'
-import { AuthService } from '../../../../../lib/services/auth.service'
 import jwt from 'jsonwebtoken'
 
-const JWT_SHARE_SECRET = process.env.JWT_SHARE_SECRET || process.env.JWT_ACCESS_SECRET || 'fallback-share-secret'
-
-async function verifyAuth(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-  return AuthService.verifyAccessToken(accessToken)
+const JWT_SHARE_SECRET: string = process.env.JWT_SHARE_SECRET || process.env.JWT_ACCESS_SECRET || ''
+if (!JWT_SHARE_SECRET) {
+  throw new Error('JWT_SHARE_SECRET or JWT_ACCESS_SECRET environment variable must be configured')
 }
 
 export async function POST(

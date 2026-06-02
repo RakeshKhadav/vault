@@ -1,13 +1,6 @@
+import { verifyAuth } from '@/lib/utils/auth-helper'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../lib/db'
-import { AuthService } from '../../../../../lib/services/auth.service'
-
-async function verifyAuth(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-  return AuthService.verifyAccessToken(accessToken)
-}
-
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

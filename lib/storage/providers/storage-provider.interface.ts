@@ -25,4 +25,7 @@ export interface StorageProvider {
   generateStreamUrl(credentialsJson: string, providerFileId: string): Promise<string>
   generateDownloadUrl(credentialsJson: string, providerFileId: string): Promise<string>
   getStorageInfo(credentialsJson: string): Promise<StorageInfo>
+  generateUploadUrl(credentialsJson: string, providerFileId: string, mimeType: string): Promise<string>
+  verifyFileExists(credentialsJson: string, providerFileId: string): Promise<boolean>
+  uploadBuffer(credentialsJson: string, buffer: Buffer, fileKey: string, mimeType: string): Promise<void>
 }

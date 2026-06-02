@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { formatBytes as formatSize } from '@/lib/utils/format'
 
 interface TrashedFile {
   id: string
@@ -68,14 +69,7 @@ export default function TrashPage() {
     }
   }
 
-  const formatSize = (bytesStr: string) => {
-    const bytes = parseInt(bytesStr, 10)
-    if (isNaN(bytes)) return '0 B'
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    if (bytes === 0) return '0 Byte'
-    const i = Math.floor(Math.log(bytes) / Math.log(1024))
-    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+
 
   const isVideo = (mimeType: string) => mimeType.startsWith('video/')
 

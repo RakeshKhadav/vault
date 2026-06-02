@@ -1,6 +1,6 @@
+import { verifyAuth } from '@/lib/utils/auth-helper'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../lib/db'
-import { AuthService } from '../../../../lib/services/auth.service'
 import { StorageService } from '../../../../lib/services/storage.service'
 
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024 // 20MB
@@ -8,12 +8,6 @@ const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024 // 2GB
 
 const ALLOWED_IMAGES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
 const ALLOWED_VIDEOS = ['video/mp4', 'video/quicktime', 'video/webm']
-
-async function verifyAuth(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-  return AuthService.verifyAccessToken(accessToken)
-}
 
 export async function POST(req: NextRequest) {
   const user = await verifyAuth(req)

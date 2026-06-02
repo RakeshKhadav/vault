@@ -1,5 +1,5 @@
 import { Readable } from 'stream'
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, PutBucketCorsCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'crypto'
 import { StorageProvider, StorageInfo, UploadResult } from './storage-provider.interface'
@@ -8,6 +8,7 @@ import { decrypt } from '../encryption'
 
 export class B2Provider implements StorageProvider {
   private static clientCache = new Map<string, { client: S3Client; bucketName: string; bucketLimitGb: number }>()
+  private static urlCache = new Map<string, { url: string; expiresAt: number }>()
 
   private getS3Client(credentialsJson: string): { client: S3Client; bucketName: string; bucketLimitGb: number } {
     const cached = B2Provider.clientCache.get(credentialsJson)
@@ -79,6 +80,26 @@ export class B2Provider implements StorageProvider {
         Bucket: bucketName,
         Key: testKey,
       }))
+
+      // Proactively configure/verify CORS to allow direct client-side browser uploads
+      try {
+        await client.send(new PutBucketCorsCommand({
+          Bucket: bucketName,
+          CORSConfiguration: {
+            CORSRules: [
+              {
+                AllowedHeaders: ['*'],
+                AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
+                AllowedOrigins: ['*'],
+                ExposeHeaders: ['ETag'],
+                MaxAgeSeconds: 3600
+              }
+            ]
+          }
+        }))
+      } catch (corsErr) {
+        console.warn('[B2 Connection Test]: Successfully completed write/delete tests, but failed to write CORS config. B2 credentials key might lack CORS permissions.', corsErr)
+      }
       
       return { success: true }
     } catch (err) {
@@ -117,7 +138,7 @@ export class B2Provider implements StorageProvider {
         Bucket: bucketName,
         Key: thumbKey,
         Body: thumbnailBuffer,
-        ContentType: 'image/jpeg',
+        ContentType: 'image/webp',
       }))
       thumbnailResult = {
         providerFileId: thumbKey,
@@ -162,7 +183,53 @@ export class B2Provider implements StorageProvider {
     }
   }
 
+  private applyCloudflareProxy(urlStr: string, credentialsJson: string): string {
+    let proxyUrl = process.env.CLOUDFLARE_PROXY_URL || process.env.NEXT_PUBLIC_CLOUDFLARE_PROXY_URL
+
+    if (!proxyUrl) {
+      try {
+        const creds = JSON.parse(credentialsJson)
+        if (creds.cloudflareProxyUrl) {
+          proxyUrl = creds.cloudflareProxyUrl
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!proxyUrl) {
+      return urlStr
+    }
+
+    try {
+      const url = new URL(urlStr)
+      let normalizedProxy = proxyUrl.trim()
+      if (!normalizedProxy.startsWith('http://') && !normalizedProxy.startsWith('https://')) {
+        normalizedProxy = `https://${normalizedProxy}`
+      }
+      const proxyParsed = new URL(normalizedProxy)
+
+      url.protocol = proxyParsed.protocol
+      url.hostname = proxyParsed.hostname
+      if (proxyParsed.port) {
+        url.port = proxyParsed.port
+      } else {
+        url.port = ''
+      }
+      return url.toString()
+    } catch (err) {
+      console.error('Error applying Cloudflare proxy to URL:', err)
+      return urlStr
+    }
+  }
+
   async generateViewUrl(credentialsJson: string, providerFileId: string): Promise<string> {
+    const cacheKey = `${providerFileId}`
+    const cached = B2Provider.urlCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now() + 15 * 60 * 1000) {
+      return cached.url
+    }
+
     const { client, bucketName } = this.getS3Client(credentialsJson)
 
     const command = new GetObjectCommand({
@@ -171,7 +238,11 @@ export class B2Provider implements StorageProvider {
     })
 
     // URL valid for 1 hour (3600 seconds)
-    return getSignedUrl(client, command, { expiresIn: 3600 })
+    const signedUrl = await getSignedUrl(client, command, { expiresIn: 3600 })
+    const finalUrl = this.applyCloudflareProxy(signedUrl, credentialsJson)
+
+    B2Provider.urlCache.set(cacheKey, { url: finalUrl, expiresAt: Date.now() + 3600 * 1000 })
+    return finalUrl
   }
 
   async generateStreamUrl(credentialsJson: string, providerFileId: string): Promise<string> {
@@ -196,7 +267,8 @@ export class B2Provider implements StorageProvider {
     })
 
     // URL valid for 15 minutes (900 seconds)
-    return getSignedUrl(client, command, { expiresIn: 900 })
+    const signedUrl = await getSignedUrl(client, command, { expiresIn: 900 })
+    return this.applyCloudflareProxy(signedUrl, credentialsJson)
   }
 
   async getStorageInfo(credentialsJson: string): Promise<StorageInfo> {
@@ -236,5 +308,44 @@ export class B2Provider implements StorageProvider {
       totalSpaceMb,
       usedSpaceMb: Math.floor(usedSpaceBytes / (1024 * 1024)),
     }
+  }
+
+  async generateUploadUrl(credentialsJson: string, providerFileId: string, mimeType: string): Promise<string> {
+    const { client, bucketName } = this.getS3Client(credentialsJson)
+
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: providerFileId,
+      ContentType: mimeType,
+    })
+
+    const signedUrl = await getSignedUrl(client, command, { expiresIn: 1800 })
+    return this.applyCloudflareProxy(signedUrl, credentialsJson)
+  }
+
+  async verifyFileExists(credentialsJson: string, providerFileId: string): Promise<boolean> {
+    try {
+      const { client, bucketName } = this.getS3Client(credentialsJson)
+      await client.send(new HeadObjectCommand({
+        Bucket: bucketName,
+        Key: providerFileId,
+      }))
+      return true
+    } catch (err: any) {
+      if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+        return false
+      }
+      throw err
+    }
+  }
+
+  async uploadBuffer(credentialsJson: string, buffer: Buffer, fileKey: string, mimeType: string): Promise<void> {
+    const { client, bucketName } = this.getS3Client(credentialsJson)
+    await client.send(new PutObjectCommand({
+      Bucket: bucketName,
+      Key: fileKey,
+      Body: buffer,
+      ContentType: mimeType,
+    }))
   }
 }

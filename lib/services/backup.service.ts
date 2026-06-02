@@ -55,6 +55,20 @@ export class BackupService {
 
     try {
       const file = job.file
+
+      // Telegram Bot API limit is 50MB for document uploads. Bypass to avoid OOM crashes on large files.
+      const maxTelegramSize = 50 * 1024 * 1024
+      if (Number(file.fileSize) > maxTelegramSize) {
+        await db.backup.update({
+          where: { id: backupId },
+          data: {
+            status: 'FAILED',
+            errorMessage: 'File size exceeds Telegram Bot API document upload limit of 50MB.',
+          },
+        })
+        return
+      }
+
       const provider = StorageManager.getProvider(file.storageNode.provider)
       const credentialsStr = decrypt(file.storageNode.credentialsJson)
       

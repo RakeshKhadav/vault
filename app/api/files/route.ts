@@ -1,14 +1,8 @@
+import { verifyAuth } from '@/lib/utils/auth-helper'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../lib/db'
-import { AuthService } from '../../../lib/services/auth.service'
 import { StorageManager } from '../../../lib/storage/manager'
 import { decrypt } from '../../../lib/storage/encryption'
-
-async function verifyAuth(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-  return AuthService.verifyAccessToken(accessToken)
-}
 
 export async function GET(req: NextRequest) {
   const user = await verifyAuth(req)
@@ -107,8 +101,6 @@ export async function GET(req: NextRequest) {
     // Map files and generate pre-signed direct URLs in parallel
     const formattedFiles = await Promise.all(paginatedFiles.map(async (file) => {
       let thumbnailUrl: string | null = null
-      let viewUrl: string | null = null
-      let streamUrl: string | null = null
 
       try {
         const provider = StorageManager.getProvider(file.storageNode.provider)
@@ -117,13 +109,6 @@ export async function GET(req: NextRequest) {
         // Generate pre-signed URL for WebP thumbnail directly pointing to B2
         if (file.thumbnail) {
           thumbnailUrl = await provider.generateViewUrl(credentialsStr, file.thumbnail.providerFileId)
-        }
-
-        // Generate pre-signed URLs for high-resolution images or video stream
-        if (file.mimeType.startsWith('video/')) {
-          streamUrl = await provider.generateStreamUrl(credentialsStr, file.providerFileId)
-        } else if (file.mimeType.startsWith('image/')) {
-          viewUrl = await provider.generateViewUrl(credentialsStr, file.providerFileId)
         }
       } catch (err) {
         console.error(`Failed to generate pre-signed URL for file ${file.id}:`, err)
@@ -139,8 +124,8 @@ export async function GET(req: NextRequest) {
         thumbnailFileId: file.thumbnailFileId,
         uploadedAt: file.uploadedAt.toISOString(),
         thumbnailUrl,
-        viewUrl,
-        streamUrl,
+        viewUrl: null,
+        streamUrl: null,
       }
     }))
 

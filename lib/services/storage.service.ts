@@ -4,6 +4,7 @@ import { Readable } from 'stream'
 import { MediaProcessor } from '../storage/media'
 import { BackupService } from './backup.service'
 import { decrypt } from '../storage/encryption'
+import crypto from 'crypto'
 
 export class StorageService {
   static async uploadFile(userId: string, fileBuffer: Buffer, fileName: string, mimeType: string) {
@@ -115,6 +116,21 @@ export class StorageService {
     return provider.download(credentialsStr, file.providerFileId)
   }
 
+  static async getDownloadUrl(fileId: string, userId: string) {
+    const file = await db.file.findFirst({
+      where: { id: fileId, userId, deletedAt: null },
+      include: { storageNode: true },
+    })
+
+    if (!file) {
+      throw new Error('File not found')
+    }
+
+    const provider = StorageManager.getProvider(file.storageNode.provider)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    return provider.generateDownloadUrl(credentialsStr, file.providerFileId)
+  }
+
   static async softDeleteFile(fileId: string, userId: string, userRole?: string) {
     const file = await db.file.findFirst({
       where: {
@@ -218,6 +234,21 @@ export class StorageService {
     return provider.download(credentialsStr, file.providerFileId)
   }
 
+  static async getDownloadUrlAdmin(fileId: string) {
+    const file = await db.file.findFirst({
+      where: { id: fileId, deletedAt: null },
+      include: { storageNode: true },
+    })
+
+    if (!file) {
+      throw new Error('File not found')
+    }
+
+    const provider = StorageManager.getProvider(file.storageNode.provider)
+    const credentialsStr = decrypt(file.storageNode.credentialsJson)
+    return provider.generateDownloadUrl(credentialsStr, file.providerFileId)
+  }
+
   static async permanentlyDeleteFileAdmin(fileId: string) {
     const file = await db.file.findFirst({
       where: { id: fileId },
@@ -262,5 +293,114 @@ export class StorageService {
     })
 
     return { success: true }
+  }
+
+  static async confirmDirectUpload(
+    userId: string,
+    jobId: string,
+    nodeId: string,
+    providerFileId: string,
+    fileName: string,
+    mimeType: string,
+    fileSize: number
+  ) {
+    const node = await db.storageNode.findFirst({
+      where: { id: nodeId, isActive: true },
+    })
+
+    if (!node) {
+      throw new Error('Storage node not found or inactive')
+    }
+
+    const provider = StorageManager.getProvider(node.provider)
+    const credentialsStr = decrypt(node.credentialsJson)
+
+    const exists = await provider.verifyFileExists(credentialsStr, providerFileId)
+    if (!exists) {
+      throw new Error('File does not exist on storage provider')
+    }
+
+    let thumbnailBuffer: Buffer | null = null
+    const isImage = mimeType.startsWith('image/')
+    const isVideo = mimeType.startsWith('video/')
+    const thumbName = `thumb-${fileName}.webp`
+    let thumbnailResult: { providerFileId: string; size: number } | undefined
+
+    try {
+      if (isImage) {
+        const stream = await provider.download(credentialsStr, providerFileId)
+        thumbnailBuffer = await MediaProcessor.generateImageThumbnailFromStream(stream)
+      } else if (isVideo) {
+        const presignedUrl = await provider.generateViewUrl(credentialsStr, providerFileId)
+        thumbnailBuffer = await MediaProcessor.generateVideoThumbnailFromUrl(presignedUrl, fileName)
+      }
+
+      if (thumbnailBuffer) {
+        const thumbKey = `thumb-${crypto.randomUUID()}-${thumbName}`
+        await provider.uploadBuffer(credentialsStr, thumbnailBuffer, thumbKey, 'image/webp')
+        thumbnailResult = {
+          providerFileId: thumbKey,
+          size: thumbnailBuffer.length,
+        }
+      }
+    } catch (err) {
+      console.error('Thumbnail generation/upload failed:', err)
+    }
+
+    const file = await db.file.create({
+      data: {
+        userId,
+        storageNodeId: node.id,
+        fileName,
+        originalName: fileName,
+        providerFileId,
+        mimeType,
+        fileSize: BigInt(fileSize),
+      },
+    })
+
+    let finalFile = file
+
+    if (thumbnailResult) {
+      try {
+        const thumbFile = await db.file.create({
+          data: {
+            userId,
+            storageNodeId: node.id,
+            fileName: thumbName,
+            originalName: thumbName,
+            providerFileId: thumbnailResult.providerFileId,
+            mimeType: 'image/webp',
+            fileSize: BigInt(thumbnailResult.size),
+          },
+        })
+
+        finalFile = await db.file.update({
+          where: { id: file.id },
+          data: { thumbnailFileId: thumbFile.id },
+        })
+      } catch (dbErr) {
+        console.error('Failed to save thumbnail metadata to DB:', dbErr)
+      }
+    }
+
+    const totalUploadedSizeMb = (fileSize + (thumbnailBuffer?.length || 0)) / (1024 * 1024)
+    await db.storageNode.update({
+      where: { id: node.id },
+      data: {
+        usedSpaceMb: {
+          increment: Math.ceil(totalUploadedSizeMb),
+        },
+      },
+    })
+
+    const oneGb = 1024 * 1024 * 1024
+    if (isImage || (isVideo && fileSize <= oneGb)) {
+      await BackupService.createBackupJob(finalFile.id).catch((err) => {
+        console.error('Failed to create backup job:', err)
+      })
+    }
+
+    return finalFile
   }
 }

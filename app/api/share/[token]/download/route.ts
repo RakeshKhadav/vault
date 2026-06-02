@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../lib/db'
 import { StorageManager } from '../../../../../lib/storage/manager'
 import jwt from 'jsonwebtoken'
@@ -33,23 +33,9 @@ export async function GET(
 
     const provider = StorageManager.getProvider(file.storageNode.provider)
     const credentialsStr = decrypt(file.storageNode.credentialsJson)
-    const stream = await provider.download(credentialsStr, file.providerFileId)
+    const downloadUrl = await provider.generateDownloadUrl(credentialsStr, file.providerFileId)
 
-    // Convert node Readable stream to Web Response stream
-    const webStream = new ReadableStream({
-      start(controller) {
-        stream.on('data', (chunk) => controller.enqueue(chunk))
-        stream.on('end', () => controller.close())
-        stream.on('error', (err) => controller.error(err))
-      },
-    })
-
-    return new Response(webStream, {
-      headers: {
-        'Content-Type': file.mimeType || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(file.originalName)}"`,
-      },
-    })
+    return NextResponse.redirect(downloadUrl, 307)
   } catch (error) {
     return new Response('Invalid or expired share token', { status: 401 })
   }
