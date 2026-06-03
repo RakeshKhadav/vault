@@ -86,6 +86,7 @@ model File {
   userId          String       @map("user_id") @db.Uuid
   storageNodeId   String       @map("storage_node_id") @db.Uuid
   thumbnailFileId String?      @unique @map("thumbnail_file_id") @db.Uuid
+  previewFileId   String?      @unique @map("preview_file_id") @db.Uuid
   fileName        String       @map("file_name") @db.VarChar(255)
   originalName    String       @map("original_name") @db.VarChar(255)
   providerFileId  String       @unique @map("provider_file_id") @db.VarChar(255)
@@ -100,6 +101,9 @@ model File {
   
   thumbnailOf     File?        @relation("FileThumbnail")
   thumbnail       File?        @relation("FileThumbnail", fields: [thumbnailFileId], references: [id])
+
+  previewOf       File?        @relation("FilePreview")
+  preview         File?        @relation("FilePreview", fields: [previewFileId], references: [id])
 
   backups         Backup[]
 

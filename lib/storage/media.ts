@@ -12,10 +12,33 @@ export class MediaProcessor {
       .toBuffer()
   }
 
+  static async generateImagePreview(fileBuffer: Buffer): Promise<Buffer> {
+    return sharp(fileBuffer)
+      .resize({ width: 1920, withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer()
+  }
+
   static async generateImageThumbnailFromStream(stream: import('stream').Readable): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const resizePipeline = sharp()
         .resize({ width: 300, withoutEnlargement: true })
+        .webp({ quality: 80 })
+
+      const chunks: Buffer[] = []
+      resizePipeline.on('data', (chunk) => chunks.push(chunk))
+      resizePipeline.on('end', () => resolve(Buffer.concat(chunks)))
+      resizePipeline.on('error', (err) => reject(err))
+
+      stream.on('error', (err) => reject(err))
+      stream.pipe(resizePipeline)
+    })
+  }
+
+  static async generateImagePreviewFromStream(stream: import('stream').Readable): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const resizePipeline = sharp()
+        .resize({ width: 1920, withoutEnlargement: true })
         .webp({ quality: 80 })
 
       const chunks: Buffer[] = []

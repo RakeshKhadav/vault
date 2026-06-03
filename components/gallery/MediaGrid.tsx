@@ -11,6 +11,8 @@ export interface MediaFile {
   thumbnailUrl?: string | null
   thumbnailFileId?: string | null
   isFavorite?: boolean
+  viewUrl?: string | null
+  streamUrl?: string | null
 }
 
 export interface MediaGridProps {
@@ -24,6 +26,7 @@ export interface MediaGridProps {
   toggleFavorite?: (id: string, index: number, event?: React.MouseEvent) => void
   handleShare?: (id: string, event?: React.MouseEvent) => void
   resolveThumbnailUrl?: (file: MediaFile) => string
+  onPrefetchUrl?: (fileId: string) => void
   lastElementRef?: (node: HTMLDivElement | null) => void
 }
 
@@ -38,6 +41,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
   toggleFavorite,
   handleShare,
   resolveThumbnailUrl,
+  onPrefetchUrl,
   lastElementRef,
 }) => {
   const isVideo = (mimeType: string) => mimeType.startsWith('video/')
@@ -134,6 +138,12 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
               className={`media-card ${isSelectMode && selectedIds.has(file.id) ? 'selected' : ''}`}
               onClick={() => isSelectMode ? toggleFileSelection(file.id) : setActiveMediaIndex(index)}
               onKeyDown={(e) => handleKeyDown(e, index, file.id)}
+              onMouseEnter={() => {
+                // Hover prefetching: resolve the high-res URL so it's cached before click
+                if (!isSelectMode && onPrefetchUrl) {
+                  onPrefetchUrl(file.id)
+                }
+              }}
               tabIndex={0}
             >
               <div className="media-preview-wrapper">

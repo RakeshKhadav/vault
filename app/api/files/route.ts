@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
       userId: userIdToQuery,
       deletedAt: null,
       thumbnailOf: null, // Exclude files that are thumbnails of other files
+      previewOf: null,   // Exclude files that are previews of other files
     }
 
     if (type === 'image') {
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
     const paginatedFiles = hasMore ? files.slice(0, limit) : files
     const nextCursor = hasMore ? paginatedFiles[paginatedFiles.length - 1].id : null
 
-    // Map files and generate pre-signed direct URLs in parallel
+    // Map files and generate pre-signed thumbnail URLs only (fast initial load)
     const formattedFiles = await Promise.all(paginatedFiles.map(async (file) => {
       let thumbnailUrl: string | null = null
 
@@ -132,6 +133,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       files: formattedFiles,
       nextCursor
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      }
     })
   } catch (error) {
     console.error('Error fetching files:', error)

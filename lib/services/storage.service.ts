@@ -14,20 +14,23 @@ export class StorageService {
     const provider = StorageManager.getProvider(node.provider)
     const credentialsStr = decrypt(node.credentialsJson)
 
-    // 2. Generate thumbnail buffer beforehand
+    // 2. Generate thumbnail and preview buffers beforehand
     let thumbnailBuffer: Buffer | null = null
+    let previewBuffer: Buffer | null = null
     const isImage = mimeType.startsWith('image/')
     const isVideo = mimeType.startsWith('video/')
     const thumbName = `thumb-${fileName}.webp`
+    const previewName = `preview-${fileName}.webp`
 
     try {
       if (isImage) {
         thumbnailBuffer = await MediaProcessor.generateImageThumbnail(fileBuffer)
+        previewBuffer = await MediaProcessor.generateImagePreview(fileBuffer)
       } else if (isVideo) {
         thumbnailBuffer = await MediaProcessor.generateVideoThumbnail(fileBuffer, fileName)
       }
     } catch (err) {
-      console.error('Thumbnail generation skipped/failed:', err)
+      console.error('Thumbnail/Preview generation skipped/failed:', err)
     }
 
     // 3. Perform upload via provider adapter (uploading both files in one go!)
@@ -38,6 +41,21 @@ export class StorageService {
       thumbnailBuffer || undefined,
       thumbnailBuffer ? thumbName : undefined
     )
+
+    // 3.5. Upload preview image if generated
+    let previewResult: { providerFileId: string; size: number } | undefined
+    if (previewBuffer) {
+      try {
+        const previewKey = `preview-${crypto.randomUUID()}-${previewName}`
+        await provider.uploadBuffer(credentialsStr, previewBuffer, previewKey, 'image/webp')
+        previewResult = {
+          providerFileId: previewKey,
+          size: previewBuffer.length,
+        }
+      } catch (uploadErr) {
+        console.error('Preview upload failed:', uploadErr)
+      }
+    }
 
     // 4. Save original file metadata in database
     const file = await db.file.create({
@@ -71,7 +89,7 @@ export class StorageService {
 
         // Link original file to thumbnail
         finalFile = await db.file.update({
-          where: { id: file.id },
+          where: { id: finalFile.id },
           data: { thumbnailFileId: thumbFile.id },
         })
       } catch (dbErr) {
@@ -79,8 +97,33 @@ export class StorageService {
       }
     }
 
-    // 6. Update the storage node's used space (including thumbnail size if uploaded)
-    const totalUploadedSizeMb = (fileBuffer.length + (thumbnailBuffer?.length || 0)) / (1024 * 1024)
+    // 5.5. Save preview metadata and link if uploaded
+    if (previewResult) {
+      try {
+        const prevFile = await db.file.create({
+          data: {
+            userId,
+            storageNodeId: node.id,
+            fileName: previewName,
+            originalName: previewName,
+            providerFileId: previewResult.providerFileId,
+            mimeType: 'image/webp',
+            fileSize: BigInt(previewResult.size),
+          },
+        })
+
+        // Link original file to preview
+        finalFile = await db.file.update({
+          where: { id: finalFile.id },
+          data: { previewFileId: prevFile.id },
+        })
+      } catch (dbErr) {
+        console.error('Failed to save preview metadata to DB:', dbErr)
+      }
+    }
+
+    // 6. Update the storage node's used space (including thumbnail/preview size if uploaded)
+    const totalUploadedSizeMb = (fileBuffer.length + (thumbnailBuffer?.length || 0) + (previewBuffer?.length || 0)) / (1024 * 1024)
     await db.storageNode.update({
       where: { id: node.id },
       data: {
@@ -196,6 +239,19 @@ export class StorageService {
       }
     }
 
+    // Check if preview exists and delete it as well
+    if (file.previewFileId) {
+      const prev = await db.file.findFirst({
+        where: { id: file.previewFileId },
+      })
+      if (prev) {
+        await provider.delete(credentialsStr, prev.providerFileId).catch(() => {})
+        await db.file.delete({
+          where: { id: prev.id },
+        }).catch(() => {})
+      }
+    }
+
     // Delete file metadata permanently
     await db.file.delete({
       where: { id: fileId },
@@ -276,6 +332,19 @@ export class StorageService {
       }
     }
 
+    // Check if preview exists and delete it as well
+    if (file.previewFileId) {
+      const prev = await db.file.findFirst({
+        where: { id: file.previewFileId },
+      })
+      if (prev) {
+        await provider.delete(credentialsStr, prev.providerFileId).catch(() => {})
+        await db.file.delete({
+          where: { id: prev.id },
+        }).catch(() => {})
+      }
+    }
+
     // Delete file metadata permanently
     await db.file.delete({
       where: { id: fileId },
@@ -321,15 +390,26 @@ export class StorageService {
     }
 
     let thumbnailBuffer: Buffer | null = null
+    let previewBuffer: Buffer | null = null
     const isImage = mimeType.startsWith('image/')
     const isVideo = mimeType.startsWith('video/')
     const thumbName = `thumb-${fileName}.webp`
+    const previewName = `preview-${fileName}.webp`
     let thumbnailResult: { providerFileId: string; size: number } | undefined
+    let previewResult: { providerFileId: string; size: number } | undefined
 
     try {
       if (isImage) {
         const stream = await provider.download(credentialsStr, providerFileId)
-        thumbnailBuffer = await MediaProcessor.generateImageThumbnailFromStream(stream)
+        // Convert stream to Buffer once so we can process it for both thumbnail and preview
+        const fileBuffer = await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = []
+          stream.on('data', (chunk) => chunks.push(chunk))
+          stream.on('end', () => resolve(Buffer.concat(chunks)))
+          stream.on('error', (err) => reject(err))
+        })
+        thumbnailBuffer = await MediaProcessor.generateImageThumbnail(fileBuffer)
+        previewBuffer = await MediaProcessor.generateImagePreview(fileBuffer)
       } else if (isVideo) {
         const presignedUrl = await provider.generateViewUrl(credentialsStr, providerFileId)
         thumbnailBuffer = await MediaProcessor.generateVideoThumbnailFromUrl(presignedUrl, fileName)
@@ -343,8 +423,17 @@ export class StorageService {
           size: thumbnailBuffer.length,
         }
       }
+
+      if (previewBuffer) {
+        const previewKey = `preview-${crypto.randomUUID()}-${previewName}`
+        await provider.uploadBuffer(credentialsStr, previewBuffer, previewKey, 'image/webp')
+        previewResult = {
+          providerFileId: previewKey,
+          size: previewBuffer.length,
+        }
+      }
     } catch (err) {
-      console.error('Thumbnail generation/upload failed:', err)
+      console.error('Thumbnail/Preview generation/upload failed:', err)
     }
 
     const file = await db.file.create({
@@ -376,7 +465,7 @@ export class StorageService {
         })
 
         finalFile = await db.file.update({
-          where: { id: file.id },
+          where: { id: finalFile.id },
           data: { thumbnailFileId: thumbFile.id },
         })
       } catch (dbErr) {
@@ -384,7 +473,30 @@ export class StorageService {
       }
     }
 
-    const totalUploadedSizeMb = (fileSize + (thumbnailBuffer?.length || 0)) / (1024 * 1024)
+    if (previewResult) {
+      try {
+        const prevFile = await db.file.create({
+          data: {
+            userId,
+            storageNodeId: node.id,
+            fileName: previewName,
+            originalName: previewName,
+            providerFileId: previewResult.providerFileId,
+            mimeType: 'image/webp',
+            fileSize: BigInt(previewResult.size),
+          },
+        })
+
+        finalFile = await db.file.update({
+          where: { id: finalFile.id },
+          data: { previewFileId: prevFile.id },
+        })
+      } catch (dbErr) {
+        console.error('Failed to save preview metadata to DB:', dbErr)
+      }
+    }
+
+    const totalUploadedSizeMb = (fileSize + (thumbnailBuffer?.length || 0) + (previewBuffer?.length || 0)) / (1024 * 1024)
     await db.storageNode.update({
       where: { id: node.id },
       data: {

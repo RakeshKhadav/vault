@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       where: {
         deletedAt: null,
         thumbnailOf: null,
+        previewOf: null,
       },
     })
 

@@ -444,6 +444,7 @@ function GalleryPageContent() {
           setActiveMediaIndex={viewer.setActiveMediaIndex}
           toggleFavorite={toggleFavorite}
           handleShare={handleShare}
+          onPrefetchUrl={viewer.prefetchUrl}
           lastElementRef={lastElementRef}
         />
       )}

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
         userId: user.userId,
         deletedAt: { not: null },
         thumbnailOf: null,
+        previewOf: null,
       },
       orderBy: { deletedAt: 'desc' },
       select: {
@@ -68,7 +69,11 @@ export async function GET(req: NextRequest) {
       }
     }))
 
-    return NextResponse.json({ files: formattedFiles })
+    return NextResponse.json({ files: formattedFiles }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      }
+    })
   } catch (error) {
     console.error('Error fetching trash files:', error)
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 })

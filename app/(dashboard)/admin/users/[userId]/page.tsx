@@ -352,9 +352,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
     }
   }
 
-  const resolveThumbnailUrl = (file: { id: string; thumbnailFileId?: string | null }) => {
-    return file.thumbnailFileId ? `/api/files/${file.id}/thumbnail` : ''
-  }
+
 
   if (profileError) {
     return (
@@ -466,7 +464,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
           setActiveMediaIndex={viewer.setActiveMediaIndex}
           toggleFavorite={toggleFavorite}
           handleShare={handleShare}
-          resolveThumbnailUrl={resolveThumbnailUrl}
+          onPrefetchUrl={viewer.prefetchUrl}
           lastElementRef={lastElementRef}
         />
       )}
@@ -486,7 +484,6 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
         onToggleFavorite={toggleFavorite}
         onShare={handleShare}
         onDelete={handleDelete}
-        resolveThumbnailUrl={resolveThumbnailUrl}
       />
 
       {/* Share Link Modal Overlay */}

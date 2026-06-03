@@ -270,6 +270,7 @@ function FavoritesPageContent() {
           toggleFileSelection={() => {}}
           setActiveMediaIndex={viewer.setActiveMediaIndex}
           toggleFavorite={toggleFavorite}
+          onPrefetchUrl={viewer.prefetchUrl}
           lastElementRef={lastElementRef}
         />
       )}

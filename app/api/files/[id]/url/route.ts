@@ -24,6 +24,7 @@ export async function GET(
       },
       include: {
         storageNode: true,
+        preview: true,
       },
     })
 
@@ -35,16 +36,21 @@ export async function GET(
     const credentialsStr = decrypt(file.storageNode.credentialsJson)
 
     let viewUrl: string | null = null
+    let previewUrl: string | null = null
     let streamUrl: string | null = null
 
     if (file.mimeType.startsWith('video/')) {
       streamUrl = await provider.generateStreamUrl(credentialsStr, file.providerFileId)
     } else if (file.mimeType.startsWith('image/')) {
       viewUrl = await provider.generateViewUrl(credentialsStr, file.providerFileId)
+      if (file.preview) {
+        previewUrl = await provider.generateViewUrl(credentialsStr, file.preview.providerFileId)
+      }
     }
 
     return NextResponse.json({
       viewUrl,
+      previewUrl,
       streamUrl,
     })
   } catch (error) {

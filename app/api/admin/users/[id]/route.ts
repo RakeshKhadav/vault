@@ -44,7 +44,7 @@ export async function GET(
     })
 
     const countAggregate = await db.file.count({
-      where: { userId: id, deletedAt: null, thumbnailOf: null },
+      where: { userId: id, deletedAt: null, thumbnailOf: null, previewOf: null },
     })
 
     const sizeBytes = sizeAggregate._sum.fileSize || BigInt(0)

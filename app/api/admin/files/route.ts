@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     const whereClause: any = {
       deletedAt: null,
       thumbnailOf: null, // Exclude files that are thumbnails
+      previewOf: null,   // Exclude files that are previews
     }
 
     if (userId) {
@@ -79,6 +80,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       files: formattedFiles,
       nextCursor
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      }
     })
   } catch (error) {
     console.error('Error fetching admin files:', error)

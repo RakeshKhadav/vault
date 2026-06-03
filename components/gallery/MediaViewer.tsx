@@ -18,7 +18,7 @@ export interface MediaFile {
 export interface MediaViewerProps {
   activeMediaIndex: number | null
   files: MediaFile[]
-  resolvedUrls: Record<string, { viewUrl?: string | null; streamUrl?: string | null }>
+  resolvedUrls: Record<string, { viewUrl?: string | null; previewUrl?: string | null; streamUrl?: string | null }>
   highResLoaded: boolean
   setHighResLoaded: (val: boolean) => void
   showDetails: boolean
@@ -79,7 +79,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const thumbUrl = resolveThumbnailUrl ? resolveThumbnailUrl(activeMedia) : (activeMedia.thumbnailUrl || '')
   const displayUrl = isVideo 
     ? (resolvedUrls[activeMedia.id]?.streamUrl || undefined) 
-    : (resolvedUrls[activeMedia.id]?.viewUrl || thumbUrl)
+    : (resolvedUrls[activeMedia.id]?.previewUrl || resolvedUrls[activeMedia.id]?.viewUrl || thumbUrl)
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (showDetails) {
@@ -151,25 +151,49 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               }}
             />
           ) : (
-            <img
-              src={displayUrl}
-              alt={activeMedia.originalName}
-              className="viewer-image"
-              style={{
-                transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomScale})`,
-                transition: isDragging.current 
-                  ? 'filter 0.3s ease-in-out' 
-                  : 'transform 0.2s ease-in-out, filter 0.3s ease-in-out',
-                cursor: zoomScale > 1 ? 'grab' : 'zoom-in',
-                touchAction: 'none',
-                filter: highResLoaded ? 'none' : 'blur(8px)'
-              }}
-              onLoad={() => {
-                if (resolvedUrls[activeMedia.id]?.viewUrl) {
-                  setHighResLoaded(true)
-                }
-              }}
-            />
+            <div style={{ display: 'grid', placeItems: 'center', position: 'relative', width: '100%', height: '100%' }}>
+              {/* Thumbnail Placeholder (loaded instantly from browser cache) */}
+              {!highResLoaded && thumbUrl && (
+                <img
+                  src={thumbUrl}
+                  alt={activeMedia.originalName}
+                  className="viewer-image"
+                  style={{
+                    gridArea: '1 / 1',
+                    filter: 'blur(8px)',
+                    transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomScale})`,
+                    transition: isDragging.current 
+                      ? 'none' 
+                      : 'transform 0.2s ease-in-out',
+                    cursor: zoomScale > 1 ? 'grab' : 'zoom-in',
+                    touchAction: 'none',
+                    zIndex: 1,
+                  }}
+                />
+              )}
+              {/* High-res Image (fades in smoothly over the thumbnail placeholder) */}
+              <img
+                src={displayUrl}
+                alt={activeMedia.originalName}
+                className="viewer-image"
+                style={{
+                  gridArea: '1 / 1',
+                  opacity: highResLoaded ? 1 : 0.01,
+                  transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomScale})`,
+                  transition: isDragging.current 
+                    ? 'opacity 0.2s ease-in-out' 
+                    : 'transform 0.2s ease-in-out, opacity 0.2s ease-in-out',
+                  cursor: zoomScale > 1 ? 'grab' : 'zoom-in',
+                  touchAction: 'none',
+                  zIndex: 2,
+                }}
+                onLoad={() => {
+                  if (resolvedUrls[activeMedia.id]?.previewUrl || resolvedUrls[activeMedia.id]?.viewUrl) {
+                    setHighResLoaded(true)
+                  }
+                }}
+              />
+            </div>
           )}
         </div>
         
