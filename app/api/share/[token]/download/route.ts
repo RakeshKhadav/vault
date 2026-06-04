@@ -4,7 +4,10 @@ import { StorageManager } from '../../../../../lib/storage/manager'
 import jwt from 'jsonwebtoken'
 import { decrypt } from '../../../../../lib/storage/encryption'
 
-const JWT_SHARE_SECRET = process.env.JWT_SHARE_SECRET || process.env.JWT_ACCESS_SECRET || 'fallback-share-secret'
+const JWT_SHARE_SECRET = (process.env.JWT_SHARE_SECRET || process.env.JWT_ACCESS_SECRET) as string
+if (!JWT_SHARE_SECRET) {
+  throw new Error('JWT_SHARE_SECRET or JWT_ACCESS_SECRET environment variable must be configured')
+}
 
 export async function GET(
   req: NextRequest,

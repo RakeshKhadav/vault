@@ -7,7 +7,7 @@ import { useModal } from '@/components/ModalProvider'
 import { MediaViewer } from '@/components/gallery/MediaViewer'
 import { MediaGrid } from '@/components/gallery/MediaGrid'
 import { GalleryToolbar } from '@/components/gallery/GalleryToolbar'
-import { StarOff } from 'lucide-react'
+import { StarOff, FolderOpen } from 'lucide-react'
 
 interface MediaFile {
   id: string
@@ -267,6 +267,15 @@ function FavoritesPageContent() {
               ? 'No matching favorited files found in the archive.'
               : 'Add stars to your favorite memories to collect them in this exhibit.'}
           </p>
+          {!(searchQuery || typeFilter !== 'all' || startDate || endDate) && (
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="btn-submit empty-state-btn"
+              style={{ marginTop: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', width: 'auto' }}
+            >
+              <FolderOpen size={16} /> Go to Gallery
+            </button>
+          )}
         </div>
       ) : (
         <MediaGrid

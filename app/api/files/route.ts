@@ -100,12 +100,17 @@ export async function GET(req: NextRequest) {
     const nextCursor = hasMore ? paginatedFiles[paginatedFiles.length - 1].id : null
 
     // Map files and generate pre-signed thumbnail URLs only (fast initial load)
+    const decryptedCredentialsCache = new Map<string, string>()
     const formattedFiles = await Promise.all(paginatedFiles.map(async (file) => {
       let thumbnailUrl: string | null = null
 
       try {
         const provider = StorageManager.getProvider(file.storageNode.provider)
-        const credentialsStr = decrypt(file.storageNode.credentialsJson)
+        let credentialsStr = decryptedCredentialsCache.get(file.storageNode.id)
+        if (!credentialsStr) {
+          credentialsStr = decrypt(file.storageNode.credentialsJson)
+          decryptedCredentialsCache.set(file.storageNode.id, credentialsStr)
+        }
 
         // Generate pre-signed URL for WebP thumbnail directly pointing to B2
         if (file.thumbnail) {

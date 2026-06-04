@@ -32,6 +32,7 @@ function GalleryPageContent() {
   const [hasMore, setHasMore] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [bulkDownloadStatus, setBulkDownloadStatus] = useState<string | null>(null)
   
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -149,21 +150,34 @@ function GalleryPageContent() {
   const handleBulkDownload = useCallback(async () => {
     if (selectedIds.size === 0) return
     setIsBulkDownloading(true)
+    setBulkDownloadStatus('Initializing download...')
     try {
       const { default: JSZip } = await import('jszip')
       const zip = new JSZip()
+      
+      const fileIds = Array.from(selectedIds)
+      let downloadedCount = 0
 
-      const promises = Array.from(selectedIds).map(async (id) => {
+      // Execute fetches in parallel but update state as they complete
+      const promises = fileIds.map(async (id) => {
         const fileObj = files.find((f) => f.id === id)
         const name = fileObj ? fileObj.originalName : `file-${id}`
         const fileRes = await fetch(`/api/files/${id}/download`)
         if (!fileRes.ok) throw new Error(`Failed to download file: ${name}`)
         const blob = await fileRes.blob()
         zip.file(name, blob)
+        downloadedCount++
+        setBulkDownloadStatus(`Downloading file ${downloadedCount} of ${fileIds.length}...`)
       })
 
       await Promise.all(promises)
-      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      
+      setBulkDownloadStatus('Preparing compression...')
+      const zipBlob = await zip.generateAsync({ type: 'blob' }, (metadata) => {
+        setBulkDownloadStatus(`Zipping files (${Math.round(metadata.percent)}%)...`)
+      })
+      
+      setBulkDownloadStatus('Saving to device...')
       const url = window.URL.createObjectURL(zipBlob)
       const a = document.createElement('a')
       a.href = url
@@ -178,8 +192,9 @@ function GalleryPageContent() {
       await alert('Failed to download selected files.')
     } finally {
       setIsBulkDownloading(false)
+      setBulkDownloadStatus(null)
     }
-  }, [selectedIds, files])
+  }, [selectedIds, files, alert])
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return
@@ -454,6 +469,15 @@ function GalleryPageContent() {
               ? 'No matching memories found in the index.'
               : 'Begin preserving your stories. Drag files here or choose upload to start your archive.'}
           </p>
+          {!(searchQuery || typeFilter !== 'all' || startDate || endDate) && (
+            <button
+              onClick={() => router.push('/upload')}
+              className="btn-submit empty-state-btn"
+              style={{ marginTop: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', width: 'auto' }}
+            >
+              <UploadCloud size={16} /> Upload Files Now
+            </button>
+          )}
         </div>
       ) : (
         <MediaGrid
@@ -518,6 +542,18 @@ function GalleryPageContent() {
             >
               Copy Link to Clipboard
             </button>
+          </div>
+        </div>
+      )}
+
+      {bulkDownloadStatus && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ maxWidth: '360px', padding: '2rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <div className="spinner" style={{ width: '28px', height: '28px', borderWidth: '3px' }} />
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Processing Bulk Download</h3>
+            <p style={{ color: '#8f95a3', fontSize: '0.875rem', margin: 0 }}>
+              {bulkDownloadStatus}
+            </p>
           </div>
         </div>
       )}

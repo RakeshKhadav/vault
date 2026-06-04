@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatBytes as formatSize } from '@/lib/utils/format'
 import { useModal } from '@/components/ModalProvider'
 import {
@@ -12,7 +13,8 @@ import {
   Check,
   Film,
   Image as ImageIcon,
-  Play
+  Play,
+  FolderOpen
 } from 'lucide-react'
 
 interface TrashedFile {
@@ -27,10 +29,17 @@ interface TrashedFile {
 }
 
 export default function TrashPage() {
+  const router = useRouter()
   const { alert } = useModal()
   const [files, setFiles] = useState<TrashedFile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
+
+  // Pagination State
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const observerRef = useRef<IntersectionObserver | null>(null)
 
   // Selection Mode State
   const [isSelectMode, setIsSelectMode] = useState(false)
@@ -106,25 +115,52 @@ export default function TrashPage() {
     lastSelectedIndex.current = null
   }, [])
 
-  const fetchTrash = async () => {
-    setIsLoading(true)
+  const fetchTrash = useCallback(async (isFirstLoad = true, currentCursor: string | null = null) => {
+    if (isFirstLoad) {
+      setIsLoading(true)
+    } else {
+      setIsLoadingMore(true)
+    }
     try {
-      const res = await fetch('/api/trash')
+      const params = new URLSearchParams()
+      params.append('limit', '24')
+      if (currentCursor) {
+        params.append('cursor', currentCursor)
+      }
+      const res = await fetch(`/api/trash?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch trash')
       const data = await res.json()
-      setFiles(data.files)
+      if (isFirstLoad) {
+        setFiles(data.files)
+      } else {
+        setFiles((prev) => [...prev, ...data.files])
+      }
+      setCursor(data.nextCursor)
+      setHasMore(!!data.nextCursor)
     } catch (err) {
       console.error('Error fetching trash:', err)
     } finally {
       setIsLoading(false)
+      setIsLoadingMore(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchTrash()
+    fetchTrash(true, null)
     setSelectedIds(new Set())
     lastSelectedIndex.current = null
-  }, [])
+  }, [fetchTrash])
+
+  const lastElementRef = useCallback((node: HTMLDivElement | null) => {
+    if (isLoading || isLoadingMore) return
+    if (observerRef.current) observerRef.current.disconnect()
+    observerRef.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && cursor) {
+        fetchTrash(false, cursor)
+      }
+    })
+    if (node) observerRef.current.observe(node)
+  }, [isLoading, isLoadingMore, hasMore, cursor, fetchTrash])
 
   const handleRestore = async (id: string) => {
     setProcessingId(id)
@@ -290,81 +326,110 @@ export default function TrashPage() {
           <Trash size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>Trash is empty.</h2>
           <p className="placeholder-description">Deleted files reside here temporarily for safe recovery.</p>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="btn-submit empty-state-btn"
+            style={{ marginTop: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', width: 'auto' }}
+          >
+            <FolderOpen size={16} /> Go to Gallery
+          </button>
         </div>
       ) : (
         <div className={`gallery-grid-wrapper ${isLoading ? 'gallery-updating' : ''}`}>
           <div className="gallery-grid">
-          {files.map((file) => (
-            <div 
-              key={file.id} 
-              className={`media-card trash-card ${isSelectMode && selectedIds.has(file.id) ? 'selected' : ''}`}
-              onClick={(e) => isSelectMode ? toggleFileSelection(file.id, e) : undefined}
-            >
-              <div className="media-preview-wrapper" style={{ position: 'relative' }}>
-                {isSelectMode && (
-                  <button
-                    className={`card-select-checkbox flex items-center justify-center ${selectedIds.has(file.id) ? 'checked' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleFileSelection(file.id, e)
-                    }}
-                    aria-label={selectedIds.has(file.id) ? 'Deselect' : 'Select'}
-                  >
-                    {selectedIds.has(file.id) ? <Check size={12} strokeWidth={3} /> : ''}
-                  </button>
-                )}
-                {file.thumbnailUrl ? (
-                  <img
-                    src={file.thumbnailUrl}
-                    alt={file.originalName}
-                    loading="lazy"
-                    className="media-thumbnail"
-                  />
-                ) : (
-                  <div className="media-icon-placeholder flex items-center justify-center">
-                    {isVideo(file.mimeType) ? (
-                      <Film size={36} className="text-zinc-500 opacity-60" />
-                    ) : (
-                      <ImageIcon size={36} className="text-zinc-500 opacity-60" />
-                    )}
-                  </div>
-                )}
-                {isVideo(file.mimeType) && (
-                  <div className="video-badge">
-                    <span className="play-icon flex items-center justify-center">
-                      <Play size={12} className="text-white fill-current" />
-                    </span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="media-info">
-                <span className="media-title" title={file.originalName}>
-                  {file.originalName}
-                </span>
-                <span className="media-size">
-                  {formatSize(file.fileSize)} • Trashed on {new Date(file.deletedAt).toLocaleDateString()}
-                </span>
-              </div>
+          {files.map((file, index) => {
+            const isLast = index === files.length - 1
+            return (
+              <div 
+                key={file.id} 
+                ref={isLast ? lastElementRef : null}
+                className={`media-card trash-card ${isSelectMode && selectedIds.has(file.id) ? 'selected' : ''}`}
+                onClick={(e) => isSelectMode ? toggleFileSelection(file.id, e) : undefined}
+              >
+                <div className="media-preview-wrapper" style={{ position: 'relative' }}>
+                  {isSelectMode && (
+                    <button
+                      className={`card-select-checkbox flex items-center justify-center ${selectedIds.has(file.id) ? 'checked' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleFileSelection(file.id, e)
+                      }}
+                      aria-label={selectedIds.has(file.id) ? 'Deselect' : 'Select'}
+                    >
+                      {selectedIds.has(file.id) ? <Check size={12} strokeWidth={3} /> : ''}
+                    </button>
+                  )}
+                  {file.thumbnailUrl ? (
+                    <img
+                      src={file.thumbnailUrl}
+                      alt={file.originalName}
+                      loading="lazy"
+                      className="media-thumbnail"
+                    />
+                  ) : (
+                    <div className="media-icon-placeholder flex items-center justify-center">
+                      {isVideo(file.mimeType) ? (
+                        <Film size={36} className="text-zinc-500 opacity-60" />
+                      ) : (
+                        <ImageIcon size={36} className="text-zinc-500 opacity-60" />
+                      )}
+                    </div>
+                  )}
+                  {isVideo(file.mimeType) && (
+                    <div className="video-badge">
+                      <span className="play-icon flex items-center justify-center">
+                        <Play size={12} className="text-white fill-current" />
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="media-info">
+                  <span className="media-title" title={file.originalName}>
+                    {file.originalName}
+                  </span>
+                  <span className="media-size">
+                    {formatSize(file.fileSize)} • Trashed on {new Date(file.deletedAt).toLocaleDateString()}
+                  </span>
+                </div>
 
-              <div className="trash-actions">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRestore(file.id); }}
-                  disabled={processingId === file.id || isSelectMode}
-                  className="trash-action-btn restore"
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDeleteForever(file.id); }}
-                  disabled={processingId === file.id || isSelectMode}
-                  className="trash-action-btn delete"
-                >
-                  Delete Forever
-                </button>
+                <div className="trash-actions">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRestore(file.id); }}
+                    disabled={processingId === file.id || isSelectMode}
+                    className="trash-action-btn restore"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteForever(file.id); }}
+                    disabled={processingId === file.id || isSelectMode}
+                    className="trash-action-btn delete"
+                  >
+                    Delete Forever
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
+
+          {isLoadingMore && Array.from({ length: 4 }).map((_, idx) => {
+            const aspectRatios = ['1/1', '16/9', '4/3', '3/2']
+            const aspect = aspectRatios[idx % aspectRatios.length]
+            const isVid = idx % 2 === 0
+            return (
+              <div key={`more-skeleton-${idx}`} className="media-card skeleton">
+                <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
+                  {isVid && (
+                    <div className="skeleton-video-play flex items-center justify-center">
+                      <Play size={18} className="text-white opacity-60 fill-current" />
+                    </div>
+                  )}
+                </div>
+                <div className="skeleton-meta" />
+              </div>
+            )
+          })}
           </div>
         </div>
       )}

@@ -12,6 +12,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const url = new URL(req.url)
+    const cursor = url.searchParams.get('cursor') || undefined
+    const limit = parseInt(url.searchParams.get('limit') || '24', 10)
+
     const files = await db.file.findMany({
       where: {
         userId: user.userId,
@@ -19,7 +23,13 @@ export async function GET(req: NextRequest) {
         thumbnailOf: null,
         previewOf: null,
       },
-      orderBy: { deletedAt: 'desc' },
+      take: limit + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
+      orderBy: [
+        { deletedAt: 'desc' },
+        { id: 'desc' }
+      ],
       select: {
         id: true,
         fileName: true,
@@ -44,12 +54,21 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    const formattedFiles = await Promise.all(files.map(async (file) => {
+    const hasMore = files.length > limit
+    const paginatedFiles = hasMore ? files.slice(0, limit) : files
+    const nextCursor = hasMore ? paginatedFiles[paginatedFiles.length - 1].id : null
+
+    const decryptedCredentialsCache = new Map<string, string>()
+    const formattedFiles = await Promise.all(paginatedFiles.map(async (file) => {
       let thumbnailUrl: string | null = null
 
       try {
         const provider = StorageManager.getProvider(file.storageNode.provider)
-        const credentialsStr = decrypt(file.storageNode.credentialsJson)
+        let credentialsStr = decryptedCredentialsCache.get(file.storageNode.id)
+        if (!credentialsStr) {
+          credentialsStr = decrypt(file.storageNode.credentialsJson)
+          decryptedCredentialsCache.set(file.storageNode.id, credentialsStr)
+        }
 
         if (file.thumbnail) {
           thumbnailUrl = await provider.generateViewUrl(credentialsStr, file.thumbnail.providerFileId)
@@ -70,7 +89,10 @@ export async function GET(req: NextRequest) {
       }
     }))
 
-    return NextResponse.json({ files: formattedFiles }, {
+    return NextResponse.json({
+      files: formattedFiles,
+      nextCursor
+    }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       }

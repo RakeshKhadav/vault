@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../../../lib/db'
-import { AuthService } from '../../../../../../lib/services/auth.service'
 import { decrypt } from '../../../../../../lib/storage/encryption'
 import { StorageManager } from '../../../../../../lib/storage/manager'
-
-async function verifyAdmin(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-
-  const payload = AuthService.verifyAccessToken(accessToken)
-  if (!payload || payload.role !== 'ADMIN') return null
-
-  return payload
-}
+import { verifyAdmin } from '@/lib/utils/auth-helper'
 
 export async function POST(
   req: NextRequest,

@@ -10,3 +10,13 @@ export async function verifyAuth(req: NextRequest): Promise<JWTPayload | null> {
   if (!accessToken) return null
   return AuthService.verifyAccessToken(accessToken)
 }
+
+/**
+ * Common admin authorization verification helper for NextJS API routes.
+ * Decodes accessToken cookie, verifies signature, and checks role is ADMIN.
+ */
+export async function verifyAdmin(req: NextRequest): Promise<JWTPayload | null> {
+  const payload = await verifyAuth(req)
+  if (!payload || payload.role !== 'ADMIN') return null
+  return payload
+}

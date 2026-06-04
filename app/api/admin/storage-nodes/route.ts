@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../../lib/db'
-import { AuthService } from '../../../../lib/services/auth.service'
 import { encrypt } from '../../../../lib/storage/encryption'
 import { StorageManager } from '../../../../lib/storage/manager'
 import { z } from 'zod'
+import { verifyAdmin } from '@/lib/utils/auth-helper'
 
 const CreateNodeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   provider: z.enum(['B2']),
   credentials: z.record(z.string(), z.any()),
 })
-
-// Helper middleware to check Admin status
-async function verifyAdmin(req: NextRequest) {
-  const accessToken = req.cookies.get('accessToken')?.value
-  if (!accessToken) return null
-
-  const payload = AuthService.verifyAccessToken(accessToken)
-  if (!payload || payload.role !== 'ADMIN') return null
-
-  return payload
-}
 
 export async function GET(req: NextRequest) {
   const admin = await verifyAdmin(req)

@@ -114,10 +114,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       </button>
       
       <button className="viewer-nav-btn prev" onClick={handlePrev} aria-label="Previous">
-        <ChevronLeft size={48} strokeWidth={1.5} />
+        <ChevronLeft size={28} strokeWidth={2} />
       </button>
       <button className="viewer-nav-btn next" onClick={handleNext} aria-label="Next">
-        <ChevronRight size={48} strokeWidth={1.5} />
+        <ChevronRight size={28} strokeWidth={2} />
       </button>
 
       <div
