@@ -2762,6 +2762,34 @@ body {
   transform: none;
 }
 
+.bulk-restore-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.bulk-restore-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
+}
+
+.bulk-restore-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Button spinner */
 .btn-spinner {
   display: inline-block;
@@ -2829,7 +2857,8 @@ body {
     justify-content: space-between;
   }
   .bulk-download-btn,
-  .bulk-delete-btn {
+  .bulk-delete-btn,
+  .bulk-restore-btn {
     width: 100%;
     justify-content: center;
   }

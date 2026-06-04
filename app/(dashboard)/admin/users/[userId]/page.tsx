@@ -62,8 +62,35 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkDownloading, setIsBulkDownloading] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+
+  // Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    confirmText: string
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: '',
+    onConfirm: () => {},
+  })
+
+  const openConfirmModal = (title: string, message: string, confirmText: string, onConfirm: () => void) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      confirmText,
+      onConfirm,
+    })
+  }
 
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const lastSelectedIndex = useRef<number | null>(null)
 
   // Fetch user profile info
   useEffect(() => {
@@ -118,21 +145,38 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
   const exitSelectMode = useCallback(() => {
     setIsSelectMode(false)
     setSelectedIds(new Set())
+    lastSelectedIndex.current = null
   }, [])
 
   const toggleFileSelection = useCallback((fileId: string, event?: React.MouseEvent) => {
     event?.stopPropagation()
+    const currentIndex = files.findIndex((f) => f.id === fileId)
+    if (currentIndex === -1) return
     
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      if (next.has(fileId)) {
-        next.delete(fileId)
+      if (event?.shiftKey && lastSelectedIndex.current !== null) {
+        const start = Math.min(lastSelectedIndex.current, currentIndex)
+        const end = Math.max(lastSelectedIndex.current, currentIndex)
+        const shouldSelect = !prev.has(fileId)
+        for (let i = start; i <= end; i++) {
+          const file = files[i]
+          if (file) {
+            if (shouldSelect) next.add(file.id)
+            else next.delete(file.id)
+          }
+        }
       } else {
-        next.add(fileId)
+        if (next.has(fileId)) {
+          next.delete(fileId)
+        } else {
+          next.add(fileId)
+        }
       }
       return next
     })
-  }, [])
+    lastSelectedIndex.current = currentIndex
+  }, [files])
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(files.map((f) => f.id)))
@@ -140,6 +184,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
 
   const deselectAll = useCallback(() => {
     setSelectedIds(new Set())
+    lastSelectedIndex.current = null
   }, [])
 
   const handleBulkDownload = useCallback(async () => {
@@ -176,6 +221,33 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
       setIsBulkDownloading(false)
     }
   }, [selectedIds, files])
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return
+    openConfirmModal(
+      'Move Selected Files to Trash',
+      `Are you sure you want to move the ${selectedIds.size} selected files to trash?`,
+      'Move to Trash',
+      async () => {
+        setIsBulkDeleting(true)
+        try {
+          const res = await fetch('/api/files/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileIds: Array.from(selectedIds) }),
+          })
+          if (!res.ok) throw new Error('Failed to delete selected files')
+          setFiles((prev) => prev.filter((f) => !selectedIds.has(f.id)))
+          exitSelectMode()
+        } catch (err) {
+          console.error('Bulk delete failed:', err)
+          alert('Failed to delete selected files.')
+        } finally {
+          setIsBulkDeleting(false)
+        }
+      }
+    )
+  }, [selectedIds, exitSelectMode])
 
   // Debounce search query
   useEffect(() => {
@@ -237,6 +309,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
   useEffect(() => {
     fetchFiles(true, null)
     setSelectedIds(new Set())
+    lastSelectedIndex.current = null
   }, [fetchFiles])
 
   const lastLoadedRef = useRef(Date.now())
@@ -289,6 +362,17 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
 
   const viewer = useMediaViewer({ files })
 
+  useEffect(() => {
+    if (!isSelectMode || viewer.activeMediaIndex !== null) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); exitSelectMode() }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll() }
+      if (e.key === 'Delete') { e.preventDefault(); handleBulkDelete() }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isSelectMode, viewer.activeMediaIndex, exitSelectMode, selectAll, handleBulkDelete])
+
   // Toggling favorite (works since API allows admin bypass)
   const toggleFavorite = async (fileId: string, index: number, event?: React.MouseEvent) => {
     event?.stopPropagation()
@@ -319,20 +403,25 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
     }
   }
 
-  const handleDelete = async (fileId: string, index: number, event?: React.MouseEvent) => {
+  const handleDelete = (fileId: string, index: number, event?: React.MouseEvent) => {
     event?.stopPropagation()
-    if (!confirm('Are you sure you want to move this user\'s file to trash?')) return
+    openConfirmModal(
+      'Move File to Trash',
+      "Are you sure you want to move this user's file to trash?",
+      'Move to Trash',
+      async () => {
+        try {
+          const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' })
+          if (!res.ok) throw new Error('Failed to delete file')
 
-    try {
-      const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete file')
-
-      setFiles((prev) => prev.filter((_, i) => i !== index))
-      viewer.setActiveMediaIndex(null)
-    } catch (err) {
-      console.error(err)
-      alert('Failed to delete file.')
-    }
+          setFiles((prev) => prev.filter((_, i) => i !== index))
+          viewer.setActiveMediaIndex(null)
+        } catch (err) {
+          console.error(err)
+          alert('Failed to delete file.')
+        }
+      }
+    )
   }
 
   const handleShare = async (fileId: string, event?: React.MouseEvent) => {
@@ -438,6 +527,13 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
             >
               {isBulkDownloading ? 'Downloading...' : '📥 Download Selected'}
             </button>
+            <button 
+              className="bulk-delete-btn"
+              disabled={selectedIds.size === 0 || isBulkDeleting}
+              onClick={handleBulkDelete}
+            >
+              {isBulkDeleting ? 'Deleting...' : '🗑️ Delete Selected'}
+            </button>
           </div>
         </div>
       )}
@@ -516,6 +612,40 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
             >
               Copy Link to Clipboard
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>{confirmModal.title}</h3>
+              <button className="btn-close" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>✕</button>
+            </div>
+            <div style={{ padding: '1.5rem', color: '#8f95a3', fontSize: '0.9rem', lineHeight: '1.5' }}>
+              {confirmModal.message}
+            </div>
+            <div style={{ padding: '1rem 1.5rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.1)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <button 
+                className="btn-admin-nav" 
+                style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }} 
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                Cancel
+              </button>
+              <button 
+                className="trash-action-btn delete" 
+                style={{ flex: 'none', padding: '0.5rem 1.25rem', fontSize: '0.85rem', width: 'auto' }} 
+                onClick={() => {
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                  confirmModal.onConfirm()
+                }}
+              >
+                {confirmModal.confirmText}
+              </button>
+            </div>
           </div>
         </div>
       )}

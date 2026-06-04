@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '../../../lib/db'
 import { StorageManager } from '../../../lib/storage/manager'
 import { decrypt } from '../../../lib/storage/encryption'
+import { StorageService } from '../../../lib/services/storage.service'
 
 export async function GET(req: NextRequest) {
   const user = await verifyAuth(req)
@@ -76,6 +77,72 @@ export async function GET(req: NextRequest) {
     })
   } catch (error) {
     console.error('Error fetching trash files:', error)
+    return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const user = await verifyAuth(req)
+  if (!user) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const { fileIds } = await req.json()
+    if (!fileIds || !Array.isArray(fileIds)) {
+      return NextResponse.json({ message: 'Invalid request body' }, { status: 400 })
+    }
+
+    const deletePromises = fileIds.map((id) =>
+      StorageService.permanentlyDeleteFile(id, user.userId).catch((err) => {
+        console.error(`Failed to permanently delete file ${id}:`, err)
+        return { success: false, id, error: err.message }
+      })
+    )
+
+    const results = await Promise.all(deletePromises)
+    const failures = results.filter((r) => r && 'success' in r && !r.success)
+
+    return NextResponse.json({
+      success: true,
+      count: fileIds.length - failures.length,
+      failures,
+    })
+  } catch (error) {
+    console.error('Error in bulk permanent delete:', error)
+    return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const user = await verifyAuth(req)
+  if (!user) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const { fileIds } = await req.json()
+    if (!fileIds || !Array.isArray(fileIds)) {
+      return NextResponse.json({ message: 'Invalid request body' }, { status: 400 })
+    }
+
+    const restorePromises = fileIds.map((id) =>
+      StorageService.restoreFile(id, user.userId).catch((err) => {
+        console.error(`Failed to restore file ${id}:`, err)
+        return { success: false, id, error: err.message }
+      })
+    )
+
+    const results = await Promise.all(restorePromises)
+    const failures = results.filter((r) => r && 'success' in r && !r.success)
+
+    return NextResponse.json({
+      success: true,
+      count: fileIds.length - failures.length,
+      failures,
+    })
+  } catch (error) {
+    console.error('Error in bulk restore:', error)
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
   }
 }
