@@ -4,10 +4,12 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { sharedUploadQueue } from '@/lib/shared-upload-queue'
 import { useMediaViewer } from '@/lib/hooks/useMediaViewer'
+import { useModal } from '@/components/ModalProvider'
 import { MediaViewer } from '@/components/gallery/MediaViewer'
 import { MediaGrid } from '@/components/gallery/MediaGrid'
 import { GalleryToolbar } from '@/components/gallery/GalleryToolbar'
 import { formatBytes as formatSize } from '@/lib/utils/format'
+import { UploadCloud, X, CheckSquare, Download, Trash2, FolderOpen } from 'lucide-react'
 
 interface MediaFile {
   id: string
@@ -24,6 +26,7 @@ interface MediaFile {
 }
 
 function GalleryPageContent() {
+  const { alert, confirm } = useModal()
   const [files, setFiles] = useState<MediaFile[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -172,7 +175,7 @@ function GalleryPageContent() {
       window.URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Bulk download failed:', err)
-      alert('Failed to download selected files.')
+      await alert('Failed to download selected files.')
     } finally {
       setIsBulkDownloading(false)
     }
@@ -180,7 +183,12 @@ function GalleryPageContent() {
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`Are you sure you want to move the ${selectedIds.size} selected files to trash?`)) return
+    const isConfirmed = await confirm(`Are you sure you want to move the ${selectedIds.size} selected files to trash?`, {
+      title: 'Move Selected to Trash',
+      confirmLabel: 'Move to Trash',
+      cancelLabel: 'Keep Files'
+    })
+    if (!isConfirmed) return
     setIsBulkDeleting(true)
     try {
       const res = await fetch('/api/files/delete', {
@@ -193,11 +201,11 @@ function GalleryPageContent() {
       exitSelectMode()
     } catch (err) {
       console.error('Bulk delete failed:', err)
-      alert('Failed to delete selected files.')
+      await alert('Failed to delete selected files.')
     } finally {
       setIsBulkDeleting(false)
     }
-  }, [selectedIds, exitSelectMode])
+  }, [selectedIds, exitSelectMode, alert, confirm])
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -316,14 +324,19 @@ function GalleryPageContent() {
 
   const handleDelete = async (fileId: string, index: number, event?: React.MouseEvent) => {
     event?.stopPropagation()
-    if (!confirm('Are you sure you want to move this file to trash?')) return
+    const isConfirmed = await confirm('Are you sure you want to move this file to trash?', {
+      title: 'Move File to Trash',
+      confirmLabel: 'Move to Trash',
+      cancelLabel: 'Keep File'
+    })
+    if (!isConfirmed) return
     try {
       const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Failed to delete file')
       setFiles((prev) => prev.filter((_, i) => i !== index))
       viewer.setActiveMediaIndex(null)
     } catch (err) {
-      alert('Failed to delete file.')
+      await alert('Failed to delete file.')
     }
   }
 
@@ -337,7 +350,7 @@ function GalleryPageContent() {
       setShareUrl(data.url)
       setIsShareModalOpen(true)
     } catch (err) {
-      alert('Failed to generate share link.')
+      await alert('Failed to generate share link.')
     } finally {
       setIsSharing(false)
     }
@@ -368,8 +381,8 @@ function GalleryPageContent() {
           onDragLeave={(e) => { e.preventDefault(); setIsDraggingOver(false); }}
           onDrop={handleDrop}
         >
-          <div className="drag-overlay-content">
-            <span className="drag-overlay-icon">📤</span>
+          <div className="drag-overlay-content flex flex-col items-center">
+            <UploadCloud size={48} className="text-blue-500 mb-4 animate-bounce shrink-0" />
             <h2>Drop files anywhere to start uploading</h2>
             <p>Your files will be automatically redirected and queued for upload</p>
           </div>
@@ -386,10 +399,15 @@ function GalleryPageContent() {
         onDatePresetChange={(preset) => applyDatePreset(preset)}
         extraActions={
           <button
-            className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
+            className={`select-mode-btn ${isSelectMode ? 'active' : ''} flex items-center justify-center`}
             onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
+            aria-label={isSelectMode ? 'Cancel Selection' : 'Select Files'}
           >
-            {isSelectMode ? '✕ Cancel' : '☐ Select'}
+            {isSelectMode ? (
+              <span className="flex items-center gap-1.5"><X size={14} /> <span className="btn-label-text">Cancel</span></span>
+            ) : (
+              <span className="flex items-center gap-1.5"><CheckSquare size={14} /> <span className="btn-label-text">Select</span></span>
+            )}
           </button>
         }
       />
@@ -410,14 +428,18 @@ function GalleryPageContent() {
               onClick={handleBulkDownload}
               disabled={selectedIds.size === 0 || isBulkDownloading}
             >
-              {isBulkDownloading ? 'Downloading...' : '📥 Download Selected'}
+              {isBulkDownloading ? 'Downloading...' : (
+                <span className="flex items-center gap-1.5"><Download size={14} /> Download Selected</span>
+              )}
             </button>
             <button 
               className="bulk-delete-btn"
               onClick={handleBulkDelete}
               disabled={selectedIds.size === 0 || isBulkDeleting}
             >
-              {isBulkDeleting ? 'Deleting...' : '🗑️ Delete Selected'}
+              {isBulkDeleting ? 'Deleting...' : (
+                <span className="flex items-center gap-1.5"><Trash2 size={14} /> Delete Selected</span>
+              )}
             </button>
           </div>
         </div>
@@ -425,7 +447,7 @@ function GalleryPageContent() {
 
       {files.length === 0 && !isLoading ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <FolderOpen size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>The collection is quiet.</h2>
           <p className="placeholder-description">
             {searchQuery || typeFilter !== 'all'
@@ -470,7 +492,9 @@ function GalleryPageContent() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center' }}>
             <div className="modal-header">
               <h3>Temporary Share Link</h3>
-              <button className="btn-close" onClick={() => setIsShareModalOpen(false)}>✕</button>
+              <button className="btn-close flex items-center justify-center" onClick={() => setIsShareModalOpen(false)} aria-label="Close modal">
+                <X size={16} />
+              </button>
             </div>
             <p style={{ color: '#8f95a3', fontSize: '0.8125rem', marginBottom: '1.25rem' }}>
               Anyone with this link can view and download the file. This link will expire in 15 minutes.
@@ -487,9 +511,9 @@ function GalleryPageContent() {
             <button
               className="btn-submit"
               style={{ width: '100%' }}
-              onClick={() => {
+              onClick={async () => {
                 navigator.clipboard.writeText(shareUrl)
-                alert('Copied to clipboard!')
+                await alert('Copied to clipboard!', 'Success')
               }}
             >
               Copy Link to Clipboard

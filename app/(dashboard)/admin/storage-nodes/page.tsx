@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { AlertCircle, Database, X } from 'lucide-react'
+import { useModal } from '@/components/ModalProvider'
 
 interface StorageNode {
   id: string
@@ -13,6 +15,7 @@ interface StorageNode {
 }
 
 export default function AdminStorageNodesPage() {
+  const { alert, confirm } = useModal()
   const [nodes, setNodes] = useState<StorageNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +67,7 @@ export default function AdminStorageNodesPage() {
         setNodes(nodes.map(n => n.id === id ? { ...n, isActive: !currentStatus } : n))
       }
     } catch {
-      alert('Failed to update status')
+      await alert('Failed to update status')
     }
   }
 
@@ -75,18 +78,23 @@ export default function AdminStorageNodesPage() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        alert('Connection test successful!')
+        await alert('Connection test successful!', { title: 'Success' })
         fetchNodes() // Refresh to get updated stats
       } else {
-        alert(`Connection test failed: ${data.message || 'Check credentials'}`)
+        await alert(`Connection test failed: ${data.message || 'Check credentials'}`)
       }
     } catch {
-      alert('Test request failed')
+      await alert('Test request failed')
     }
   }
 
   async function handleDeleteNode(id: string) {
-    if (!confirm('Are you sure you want to remove this storage node?')) return
+    const isConfirmed = await confirm('Are you sure you want to remove this storage node?', {
+      title: 'Remove Storage Node',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep',
+    })
+    if (!isConfirmed) return
 
     try {
       const res = await fetch(`/api/admin/storage-nodes/${id}`, {
@@ -96,10 +104,10 @@ export default function AdminStorageNodesPage() {
         setNodes(nodes.filter(n => n.id !== id))
       } else {
         const data = await res.json()
-        alert(data.message || 'Failed to delete storage node.')
+        await alert(data.message || 'Failed to delete storage node.')
       }
     } catch {
-      alert('Delete request failed')
+      await alert('Delete request failed')
     }
   }
 
@@ -130,7 +138,7 @@ export default function AdminStorageNodesPage() {
 
       const data = await res.json()
       if (!res.ok) {
-        alert(data.message || 'Failed to add storage node. Make sure credentials are valid.')
+        await alert(data.message || 'Failed to add storage node. Make sure credentials are valid.')
         return
       }
 
@@ -146,7 +154,7 @@ export default function AdminStorageNodesPage() {
       
       fetchNodes() // Refresh nodes list
     } catch {
-      alert('Failed to send request.')
+      await alert('Failed to send request.')
     } finally {
       setIsSubmitting(false)
     }
@@ -165,8 +173,9 @@ export default function AdminStorageNodesPage() {
       </div>
 
       {error && (
-        <div className="auth-alert error">
-          <span>⚠️</span> {error}
+        <div className="auth-alert error flex items-center gap-2">
+          <AlertCircle size={16} className="text-red-500 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -174,7 +183,7 @@ export default function AdminStorageNodesPage() {
         <p className="loading-text">Loading storage nodes...</p>
       ) : nodes.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <Database size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>No Storage Nodes Connected</h2>
           <p className="placeholder-description">Add a Backblaze B2 S3-Compatible bucket as a storage node to start uploading files.</p>
         </div>
@@ -238,7 +247,9 @@ export default function AdminStorageNodesPage() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Connect Backblaze B2 Storage Node</h3>
-              <button className="btn-close" onClick={() => setIsModalOpen(false)}>✕</button>
+              <button className="btn-close flex items-center justify-center" onClick={() => setIsModalOpen(false)} aria-label="Close modal">
+                <X size={16} />
+              </button>
             </div>
             <form onSubmit={handleSubmitNode} className="modal-form">
               <div className="form-group">

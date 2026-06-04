@@ -2,6 +2,18 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { formatBytes as formatSize } from '@/lib/utils/format'
+import { useModal } from '@/components/ModalProvider'
+import {
+  Trash,
+  Trash2,
+  RotateCcw,
+  X,
+  CheckSquare,
+  Check,
+  Film,
+  Image as ImageIcon,
+  Play
+} from 'lucide-react'
 
 interface TrashedFile {
   id: string
@@ -15,6 +27,7 @@ interface TrashedFile {
 }
 
 export default function TrashPage() {
+  const { alert } = useModal()
   const [files, setFiles] = useState<TrashedFile[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -121,7 +134,7 @@ export default function TrashPage() {
       setFiles((prev) => prev.filter((f) => f.id !== id))
     } catch (err) {
       console.error('Restore error:', err)
-      alert('Failed to restore file.')
+      await alert('Failed to restore file.')
     } finally {
       setProcessingId(null)
     }
@@ -140,7 +153,7 @@ export default function TrashPage() {
           setFiles((prev) => prev.filter((f) => f.id !== id))
         } catch (err) {
           console.error('Permanent deletion error:', err)
-          alert('Failed to permanently delete file.')
+          await alert('Failed to permanently delete file.')
         } finally {
           setProcessingId(null)
         }
@@ -167,7 +180,7 @@ export default function TrashPage() {
           exitSelectMode()
         } catch (err) {
           console.error('Bulk permanent delete failed:', err)
-          alert('Failed to delete selected files.')
+          await alert('Failed to delete selected files.')
         } finally {
           setIsBulkDeleting(false)
         }
@@ -189,7 +202,7 @@ export default function TrashPage() {
       exitSelectMode()
     } catch (err) {
       console.error('Bulk restore failed:', err)
-      alert('Failed to restore selected files.')
+      await alert('Failed to restore selected files.')
     } finally {
       setIsBulkRestoring(false)
     }
@@ -206,14 +219,17 @@ export default function TrashPage() {
             Archived items here are preserved temporarily on storage nodes. Delete permanently to clear physical sectors.
           </p>
         </div>
-        {files.length > 0 && (
-          <button
-            className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
-            onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
-          >
-            {isSelectMode ? '✕ Cancel' : '☐ Select'}
-          </button>
-        )}
+        <button
+          className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
+          onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
+          disabled={files.length === 0}
+        >
+          {isSelectMode ? (
+            <span className="flex items-center gap-1.5"><X size={14} /> Cancel</span>
+          ) : (
+            <span className="flex items-center gap-1.5"><CheckSquare size={14} /> Select</span>
+          )}
+        </button>
       </div>
 
       {isSelectMode && (
@@ -232,14 +248,18 @@ export default function TrashPage() {
               disabled={selectedIds.size === 0 || isBulkRestoring}
               onClick={handleBulkRestore}
             >
-              {isBulkRestoring ? 'Restoring...' : '🔄 Restore Selected'}
+              {isBulkRestoring ? 'Restoring...' : (
+                <span className="flex items-center gap-1.5"><RotateCcw size={14} /> Restore Selected</span>
+              )}
             </button>
             <button 
               className="bulk-delete-btn"
               disabled={selectedIds.size === 0 || isBulkDeleting}
               onClick={handleBulkDelete}
             >
-              {isBulkDeleting ? 'Deleting...' : '🗑️ Delete Forever'}
+              {isBulkDeleting ? 'Deleting...' : (
+                <span className="flex items-center gap-1.5"><Trash2 size={14} /> Delete Forever</span>
+              )}
             </button>
           </div>
         </div>
@@ -255,10 +275,8 @@ export default function TrashPage() {
               <div key={idx} className="media-card skeleton">
                 <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
                   {isVideo && (
-                    <div className="skeleton-video-play">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
-                      </svg>
+                    <div className="skeleton-video-play flex items-center justify-center">
+                      <Play size={18} className="text-white opacity-60 fill-current" />
                     </div>
                   )}
                 </div>
@@ -269,7 +287,7 @@ export default function TrashPage() {
         </div>
       ) : files.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <Trash size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>Trash is empty.</h2>
           <p className="placeholder-description">Deleted files reside here temporarily for safe recovery.</p>
         </div>
@@ -285,14 +303,14 @@ export default function TrashPage() {
               <div className="media-preview-wrapper" style={{ position: 'relative' }}>
                 {isSelectMode && (
                   <button
-                    className={`card-select-checkbox ${selectedIds.has(file.id) ? 'checked' : ''}`}
+                    className={`card-select-checkbox flex items-center justify-center ${selectedIds.has(file.id) ? 'checked' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       toggleFileSelection(file.id, e)
                     }}
                     aria-label={selectedIds.has(file.id) ? 'Deselect' : 'Select'}
                   >
-                    {selectedIds.has(file.id) ? '✓' : ''}
+                    {selectedIds.has(file.id) ? <Check size={12} strokeWidth={3} /> : ''}
                   </button>
                 )}
                 {file.thumbnailUrl ? (
@@ -303,13 +321,19 @@ export default function TrashPage() {
                     className="media-thumbnail"
                   />
                 ) : (
-                  <div className="media-icon-placeholder">
-                    {isVideo(file.mimeType) ? '🎬' : '📷'}
+                  <div className="media-icon-placeholder flex items-center justify-center">
+                    {isVideo(file.mimeType) ? (
+                      <Film size={36} className="text-zinc-500 opacity-60" />
+                    ) : (
+                      <ImageIcon size={36} className="text-zinc-500 opacity-60" />
+                    )}
                   </div>
                 )}
                 {isVideo(file.mimeType) && (
                   <div className="video-badge">
-                    <span className="play-icon">▶</span>
+                    <span className="play-icon flex items-center justify-center">
+                      <Play size={12} className="text-white fill-current" />
+                    </span>
                   </div>
                 )}
               </div>
@@ -337,7 +361,7 @@ export default function TrashPage() {
                   className="trash-action-btn delete"
                 >
                   Delete Forever
-                 </button>
+                </button>
               </div>
             </div>
           ))}
@@ -347,11 +371,13 @@ export default function TrashPage() {
 
       {/* Custom Confirmation Modal */}
       {confirmModal.isOpen && (
-        <div className="modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+        <div className="modal-overlay confirm-modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content confirm-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>{confirmModal.title}</h3>
-              <button className="btn-close" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>✕</button>
+              <button className="btn-close flex items-center justify-center" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))} aria-label="Close confirm modal">
+                <X size={16} />
+              </button>
             </div>
             <div style={{ padding: '1.5rem', color: '#8f95a3', fontSize: '0.9rem', lineHeight: '1.5' }}>
               {confirmModal.message}

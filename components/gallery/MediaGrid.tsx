@@ -1,5 +1,14 @@
 import React from 'react'
 import { formatBytes } from '@/lib/utils/format'
+import {
+  Check,
+  Film,
+  Image as ImageIcon,
+  Play,
+  Star,
+  Download,
+  Link
+} from 'lucide-react'
 
 export interface MediaFile {
   id: string
@@ -111,9 +120,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
               <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
                 {isVid && (
                   <div className="skeleton-video-play">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
-                    </svg>
+                    <Play size={18} className="fill-white text-white opacity-60" />
                   </div>
                 )}
               </div>
@@ -157,7 +164,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
                     }}
                     aria-label={selectedIds.has(file.id) ? 'Deselect' : 'Select'}
                   >
-                    {selectedIds.has(file.id) ? '✓' : ''}
+                    {selectedIds.has(file.id) && <Check size={12} strokeWidth={3} className="text-white" />}
                   </button>
                 )}
                 {thumbUrl ? (
@@ -169,12 +176,18 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
                   />
                 ) : (
                   <div className="media-icon-placeholder">
-                    {isVideo(file.mimeType) ? '🎬' : '📷'}
+                    {isVideo(file.mimeType) ? (
+                      <Film size={36} className="text-zinc-400" />
+                    ) : (
+                      <ImageIcon size={36} className="text-zinc-400" />
+                    )}
                   </div>
                 )}
                 {isVideo(file.mimeType) && (
                   <div className="video-badge">
-                    <span className="play-icon">▶</span>
+                    <span className="play-icon flex items-center justify-center">
+                      <Play size={12} className="text-white fill-current" />
+                    </span>
                   </div>
                 )}
                 
@@ -187,7 +200,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
                     }}
                     title={file.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                   >
-                    ★
+                    <Star size={16} className={file.isFavorite ? 'fill-current' : ''} />
                   </button>
                 )}
                 <button
@@ -198,7 +211,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
                   }}
                   title="Download file"
                 >
-                  📥
+                  <Download size={16} />
                 </button>
                 {handleShare && (
                   <button
@@ -209,7 +222,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
                     }}
                     title="Share file"
                   >
-                    🔗
+                    <Link size={16} />
                   </button>
                 )}
               </div>
@@ -232,9 +245,7 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
               <div className="skeleton-thumb" style={{ aspectRatio: aspect }}>
                 {isVid && (
                   <div className="skeleton-video-play">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <polygon points="9,6 19,12 9,18" fill="#FFFFFF" opacity="0.6" />
-                    </svg>
+                    <Play size={18} className="fill-white text-white opacity-60" />
                   </div>
                 )}
               </div>

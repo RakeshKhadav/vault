@@ -3,10 +3,20 @@
 import { useState, useEffect, useRef, useCallback, use } from 'react'
 import Link from 'next/link'
 import { useMediaViewer } from '@/lib/hooks/useMediaViewer'
+import { useModal } from '@/components/ModalProvider'
 import { MediaViewer } from '@/components/gallery/MediaViewer'
 import { MediaGrid } from '@/components/gallery/MediaGrid'
 import { GalleryToolbar } from '@/components/gallery/GalleryToolbar'
 import { formatBytes as formatSize } from '@/lib/utils/format'
+import {
+  Lock,
+  ArrowLeft,
+  X,
+  CheckSquare,
+  Download,
+  Trash2,
+  FolderOpen
+} from 'lucide-react'
 
 interface MediaFile {
   id: string
@@ -35,6 +45,7 @@ type Params = Promise<{ userId: string }>
 
 export default function AdminUserGalleryPage(props: { params: Params }) {
   const { userId } = use(props.params)
+  const { alert } = useModal()
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -216,7 +227,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
       window.URL.revokeObjectURL(url)
     } catch (err) {
       console.error('Bulk download failed:', err)
-      alert('Failed to download selected files. Please try again.')
+      await alert('Failed to download selected files. Please try again.')
     } finally {
       setIsBulkDownloading(false)
     }
@@ -241,13 +252,13 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
           exitSelectMode()
         } catch (err) {
           console.error('Bulk delete failed:', err)
-          alert('Failed to delete selected files.')
+          await alert('Failed to delete selected files.')
         } finally {
           setIsBulkDeleting(false)
         }
       }
     )
-  }, [selectedIds, exitSelectMode])
+  }, [selectedIds, exitSelectMode, alert])
 
   // Debounce search query
   useEffect(() => {
@@ -418,7 +429,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
           viewer.setActiveMediaIndex(null)
         } catch (err) {
           console.error(err)
-          alert('Failed to delete file.')
+          await alert('Failed to delete file.')
         }
       }
     )
@@ -435,7 +446,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
       setIsShareModalOpen(true)
     } catch (err) {
       console.error(err)
-      alert('Failed to generate share link.')
+      await alert('Failed to generate share link.')
     } finally {
       setIsSharing(false)
     }
@@ -446,11 +457,11 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
   if (profileError) {
     return (
       <div className="page-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '1rem' }}>
-        <span style={{ fontSize: '3rem' }}>⚠️</span>
+        <Lock size={48} className="text-red-500 mb-2 shrink-0 animate-pulse" />
         <h2>Access Denied</h2>
         <p style={{ color: '#8f95a3' }}>{profileError}</p>
-        <Link href="/admin/users" className="btn-submit" style={{ display: 'inline-block', marginTop: '1rem', textDecoration: 'none' }}>
-          ← Back to Users
+        <Link href="/admin/users" className="btn-submit flex items-center justify-center gap-1.5" style={{ display: 'inline-flex', marginTop: '1rem', textDecoration: 'none' }}>
+          <ArrowLeft size={16} /> Back to Users
         </Link>
       </div>
     )
@@ -463,8 +474,8 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', gap: '1rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-              <Link href="/admin/users" style={{ textDecoration: 'none', color: '#3b82f6', fontSize: '0.875rem' }}>
-                ← Users
+              <Link href="/admin/users" className="flex items-center gap-1" style={{ textDecoration: 'none', color: '#3b82f6', fontSize: '0.875rem' }}>
+                <ArrowLeft size={14} /> Users
               </Link>
               <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontSize: '0.875rem' }}>/</span>
               <span style={{ color: '#8f95a3', fontSize: '0.875rem' }}>Gallery</span>
@@ -500,10 +511,15 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
         onDatePresetChange={(preset) => applyDatePreset(preset)}
         extraActions={
           <button
-            className={`select-mode-btn ${isSelectMode ? 'active' : ''}`}
+            className={`select-mode-btn ${isSelectMode ? 'active' : ''} flex items-center justify-center`}
             onClick={() => isSelectMode ? exitSelectMode() : setIsSelectMode(true)}
+            aria-label={isSelectMode ? 'Cancel Selection' : 'Select Files'}
           >
-            {isSelectMode ? '✕ Cancel' : '☐ Select'}
+            {isSelectMode ? (
+              <span className="flex items-center gap-1.5"><X size={14} /> <span className="btn-label-text">Cancel</span></span>
+            ) : (
+              <span className="flex items-center gap-1.5"><CheckSquare size={14} /> <span className="btn-label-text">Select</span></span>
+            )}
           </button>
         }
       />
@@ -525,14 +541,18 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
               disabled={selectedIds.size === 0 || isBulkDownloading}
               onClick={handleBulkDownload}
             >
-              {isBulkDownloading ? 'Downloading...' : '📥 Download Selected'}
+              {isBulkDownloading ? 'Downloading...' : (
+                <span className="flex items-center gap-1.5"><Download size={14} /> Download Selected</span>
+              )}
             </button>
             <button 
               className="bulk-delete-btn"
               disabled={selectedIds.size === 0 || isBulkDeleting}
               onClick={handleBulkDelete}
             >
-              {isBulkDeleting ? 'Deleting...' : '🗑️ Delete Selected'}
+              {isBulkDeleting ? 'Deleting...' : (
+                <span className="flex items-center gap-1.5"><Trash2 size={14} /> Delete Selected</span>
+              )}
             </button>
           </div>
         </div>
@@ -541,7 +561,7 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
       {/* Media Grid Placeholder / Grid */}
       {files.length === 0 && !isLoading ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <FolderOpen size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>The archive is quiet.</h2>
           <p className="placeholder-description">
             {searchQuery || typeFilter !== 'all' || startDate || endDate
@@ -588,7 +608,9 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center' }}>
             <div className="modal-header">
               <h3>Temporary Share Link</h3>
-              <button className="btn-close" onClick={() => setIsShareModalOpen(false)}>✕</button>
+              <button className="btn-close flex items-center justify-center" onClick={() => setIsShareModalOpen(false)} aria-label="Close modal">
+                <X size={16} />
+              </button>
             </div>
             <p style={{ color: '#8f95a3', fontSize: '0.8125rem', marginBottom: '1.25rem' }}>
               Anyone with this link can view and download the file. This link will expire in 15 minutes.
@@ -605,9 +627,9 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
             <button
               className="btn-submit"
               style={{ width: '100%' }}
-              onClick={() => {
+              onClick={async () => {
                 navigator.clipboard.writeText(shareUrl)
-                alert('Copied to clipboard!')
+                await alert('Copied to clipboard!', 'Success')
               }}
             >
               Copy Link to Clipboard
@@ -618,11 +640,13 @@ export default function AdminUserGalleryPage(props: { params: Params }) {
 
       {/* Custom Confirmation Modal */}
       {confirmModal.isOpen && (
-        <div className="modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+        <div className="modal-overlay confirm-modal-overlay" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content confirm-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>{confirmModal.title}</h3>
-              <button className="btn-close" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>✕</button>
+              <button className="btn-close flex items-center justify-center" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))} aria-label="Close confirm modal">
+                <X size={16} />
+              </button>
             </div>
             <div style={{ padding: '1.5rem', color: '#8f95a3', fontSize: '0.9rem', lineHeight: '1.5' }}>
               {confirmModal.message}

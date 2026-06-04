@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { formatBytes } from '@/lib/utils/format'
+import { AlertCircle, Users } from 'lucide-react'
 
 interface UserAdminData {
   id: string
@@ -54,8 +55,9 @@ export default function AdminUsersPage() {
       </div>
 
       {error && (
-        <div className="auth-alert error">
-          <span>⚠️</span> {error}
+        <div className="auth-alert error flex items-center gap-2">
+          <AlertCircle size={16} className="text-red-500 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -63,7 +65,7 @@ export default function AdminUsersPage() {
         <p className="loading-text">Loading user directories...</p>
       ) : users.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">👥</p>
+          <Users size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>No Users Found</h2>
         </div>
       ) : (

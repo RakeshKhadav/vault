@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ShieldAlert, AlertTriangle, Plus } from 'lucide-react'
 
 interface FormErrors {
   email?: string[]
@@ -60,14 +61,18 @@ export default function RegisterPage() {
     <main className="auth-container">
       <div className="auth-sidebar">
         <div className="auth-brand">
-          <div className="brand-logo">⊙ VAULT</div>
+          <div className="brand-logo flex items-center gap-2">
+            <ShieldAlert size={16} />
+            <span>Vault</span>
+          </div>
           <h1>Create an archive.</h1>
           <p>Begin preserving your stories and media.</p>
         </div>
 
         {errorMsg && (
-          <div className="auth-alert error">
-            <span>⚠️</span> {errorMsg}
+          <div className="auth-alert error flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-500 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
@@ -132,7 +137,9 @@ export default function RegisterPage() {
         <div className="auth-display-decor">
           <div className="decor-frame">
             <div className="decor-inner-frame">
-              <span className="decor-plus">+</span>
+              <span className="decor-plus">
+                <Plus size={16} className="text-zinc-500 opacity-50" />
+              </span>
             </div>
           </div>
           <div className="decor-metadata">

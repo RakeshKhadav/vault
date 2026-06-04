@@ -1,6 +1,16 @@
 import React from 'react'
 import { useTouchGestures } from '@/lib/hooks/useTouchGestures'
 import { formatBytes } from '@/lib/utils/format'
+import {
+  X,
+  MoreVertical,
+  ChevronLeft,
+  ChevronRight,
+  Star,
+  Download,
+  Link,
+  Trash2
+} from 'lucide-react'
 
 export interface MediaFile {
   id: string
@@ -96,18 +106,18 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   return (
     <div className="viewer-overlay" onClick={handleOverlayClick}>
       <button className="viewer-close-btn" onClick={handleClose} aria-label="Close viewer">
-        ✕
+        <X size={18} />
       </button>
       
       <button className="viewer-more-btn" onClick={(e) => { e.stopPropagation(); setShowDetails(!showDetails); }} aria-label="Toggle details">
-        ⋮
+        <MoreVertical size={18} />
       </button>
       
       <button className="viewer-nav-btn prev" onClick={handlePrev} aria-label="Previous">
-        ‹
+        <ChevronLeft size={48} strokeWidth={1.5} />
       </button>
       <button className="viewer-nav-btn next" onClick={handleNext} aria-label="Next">
-        ›
+        <ChevronRight size={48} strokeWidth={1.5} />
       </button>
 
       <div
@@ -211,7 +221,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 onClick={(e) => onToggleFavorite(activeMedia.id, activeMediaIndex!, e)}
                 title={activeMedia.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               >
-                ★ <span className="btn-label">{activeMedia.isFavorite ? 'Favorited' : 'Favorite'}</span>
+                <Star size={16} className={activeMedia.isFavorite ? 'fill-current' : ''} />
+                <span className="btn-label">{activeMedia.isFavorite ? 'Favorited' : 'Favorite'}</span>
               </button>
             )}
             <button
@@ -219,7 +230,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
               onClick={(e) => onDownload ? onDownload(activeMedia, e) : defaultOnDownload()}
               title="Download file"
             >
-              📥 <span className="btn-label">Download</span>
+              <Download size={16} />
+              <span className="btn-label">Download</span>
             </button>
             {onShare && (
               <button
@@ -227,7 +239,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 onClick={(e) => onShare(activeMedia.id, e)}
                 title="Share file"
               >
-                🔗 <span className="btn-label">Share</span>
+                <Link size={16} />
+                <span className="btn-label">Share</span>
               </button>
             )}
             {onDelete && (
@@ -236,7 +249,8 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 onClick={(e) => onDelete(activeMedia.id, activeMediaIndex!, e)}
                 title="Move to trash"
               >
-                🗑️ <span className="btn-label">Delete</span>
+                <Trash2 size={16} />
+                <span className="btn-label">Delete</span>
               </button>
             )}
           </div>

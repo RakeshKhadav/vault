@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { formatBytes } from '@/lib/utils/format'
+import { AlertCircle, FolderSearch, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useModal } from '@/components/ModalProvider'
 
 interface FileAdminData {
   id: string
@@ -18,6 +20,7 @@ interface FileAdminData {
 
 
 export default function AdminFilesPage() {
+  const { alert, confirm } = useModal()
   const [files, setFiles] = useState<FileAdminData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -88,7 +91,15 @@ export default function AdminFilesPage() {
   }
 
   async function handleDeleteFile(fileId: string, name: string) {
-    if (!confirm(`Are you sure you want to permanently delete "${name}"? This action cannot be undone and will purge the file from all storage nodes.`)) {
+    const isConfirmed = await confirm(
+      `Are you sure you want to permanently delete "${name}"? This action cannot be undone and will purge the file from all storage nodes.`,
+      {
+        title: 'Purge File',
+        confirmLabel: 'Purge',
+        cancelLabel: 'Keep File',
+      }
+    )
+    if (!isConfirmed) {
       return
     }
 
@@ -100,10 +111,10 @@ export default function AdminFilesPage() {
         setFiles(files.filter(f => f.id !== fileId))
       } else {
         const data = await res.json()
-        alert(data.message || 'Failed to delete file.')
+        await alert(data.message || 'Failed to delete file.')
       }
     } catch {
-      alert('Network error while deleting file.')
+      await alert('Network error while deleting file.')
     }
   }
 
@@ -136,8 +147,9 @@ export default function AdminFilesPage() {
       </div>
 
       {error && (
-        <div className="auth-alert error">
-          <span>⚠️</span> {error}
+        <div className="auth-alert error flex items-center gap-2">
+          <AlertCircle size={16} className="text-red-500 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -145,7 +157,7 @@ export default function AdminFilesPage() {
         <p className="loading-text">Scanning storage nodes...</p>
       ) : files.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <FolderSearch size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>No Files Found</h2>
           <p className="placeholder-description">Try adjusting your filters or search keywords.</p>
         </div>
@@ -194,13 +206,13 @@ export default function AdminFilesPage() {
             </table>
           </div>
 
-          <div className="admin-pagination">
+          <div className="admin-pagination flex items-center gap-3">
             <button
               onClick={handlePrevPage}
               disabled={cursorStack.length === 0}
-              className="btn-admin-nav"
+              className="btn-admin-nav flex items-center gap-1"
             >
-              ← Previous
+              <ChevronLeft size={14} /> Previous
             </button>
             <span style={{ fontSize: '0.875rem', color: '#8f95a3' }}>
               Page {cursorStack.length + 1}
@@ -208,9 +220,9 @@ export default function AdminFilesPage() {
             <button
               onClick={handleNextPage}
               disabled={!nextCursor}
-              className="btn-admin-nav"
+              className="btn-admin-nav flex items-center gap-1"
             >
-              Next →
+              Next <ChevronRight size={14} />
             </button>
           </div>
         </>

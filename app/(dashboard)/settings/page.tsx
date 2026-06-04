@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { formatBytes as formatSize } from '@/lib/utils/format'
+import { AlertTriangle } from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -155,8 +156,9 @@ export default function SettingsPage() {
   if (error || !data) {
     return (
       <div className="page-container">
-        <div className="auth-alert error">
-          <span>⚠️</span> {error || 'Something went wrong.'}
+        <div className="auth-alert error flex items-center gap-2">
+          <AlertTriangle size={16} className="text-red-500 shrink-0" />
+          <span>{error || 'Something went wrong.'}</span>
         </div>
         <div style={{ marginTop: '1.5rem' }}>
           <Link href="/login" className="btn-admin-nav" style={{ display: 'inline-block' }}>

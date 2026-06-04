@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useMediaViewer } from '@/lib/hooks/useMediaViewer'
+import { useModal } from '@/components/ModalProvider'
 import { MediaViewer } from '@/components/gallery/MediaViewer'
 import { MediaGrid } from '@/components/gallery/MediaGrid'
 import { GalleryToolbar } from '@/components/gallery/GalleryToolbar'
+import { StarOff } from 'lucide-react'
 
 interface MediaFile {
   id: string
@@ -22,6 +24,7 @@ interface MediaFile {
 }
 
 function FavoritesPageContent() {
+  const { alert, confirm } = useModal()
   const [files, setFiles] = useState<MediaFile[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -224,7 +227,12 @@ function FavoritesPageContent() {
 
   const handleDelete = async (fileId: string, index: number, event?: React.MouseEvent) => {
     event?.stopPropagation()
-    if (!confirm('Are you sure you want to move this file to trash?')) return
+    const isConfirmed = await confirm('Are you sure you want to move this file to trash?', {
+      title: 'Move File to Trash',
+      confirmLabel: 'Move to Trash',
+      cancelLabel: 'Keep File'
+    })
+    if (!isConfirmed) return
 
     try {
       const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' })
@@ -234,7 +242,7 @@ function FavoritesPageContent() {
       viewer.setActiveMediaIndex(null)
     } catch (err) {
       console.error(err)
-      alert('Failed to delete file.')
+      await alert('Failed to delete file.')
     }
   }
 
@@ -252,7 +260,7 @@ function FavoritesPageContent() {
 
       {files.length === 0 && !isLoading ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <StarOff size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>The gallery is quiet.</h2>
           <p className="placeholder-description">
             {searchQuery || typeFilter !== 'all' || startDate || endDate

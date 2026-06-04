@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { formatBytes } from '@/lib/utils/format'
+import { AlertCircle, CloudOff, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useModal } from '@/components/ModalProvider'
 
 interface BackupAdminData {
   id: string
@@ -26,6 +28,7 @@ interface BackupAdminData {
 
 
 export default function AdminBackupsPage() {
+  const { alert } = useModal()
   const [backups, setBackups] = useState<BackupAdminData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,10 +85,10 @@ export default function AdminBackupsPage() {
         fetchBackups()
       } else {
         const data = await res.json()
-        alert(data.message || 'Failed to trigger backup retry.')
+        await alert(data.message || 'Failed to trigger backup retry.')
       }
     } catch {
-      alert('Network error while retrying backup.')
+      await alert('Network error while retrying backup.')
     }
   }
 
@@ -112,8 +115,9 @@ export default function AdminBackupsPage() {
       </div>
 
       {error && (
-        <div className="auth-alert error">
-          <span>⚠️</span> {error}
+        <div className="auth-alert error flex items-center gap-2">
+          <AlertCircle size={16} className="text-red-500 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -121,7 +125,7 @@ export default function AdminBackupsPage() {
         <p className="loading-text">Loading cold storage status...</p>
       ) : backups.length === 0 ? (
         <div className="gallery-placeholder">
-          <p className="placeholder-icon">⊙</p>
+          <CloudOff size={48} className="text-zinc-500 mb-4 opacity-50 shrink-0" />
           <h2>No Backup Records Found</h2>
           <p className="placeholder-description">There are no files queued or uploaded to Telegram cold storage yet.</p>
         </div>
@@ -203,13 +207,13 @@ export default function AdminBackupsPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="admin-pagination">
+            <div className="admin-pagination flex items-center gap-3">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="btn-admin-nav"
+                className="btn-admin-nav flex items-center gap-1"
               >
-                ← Previous
+                <ChevronLeft size={14} /> Previous
               </button>
               <span style={{ fontSize: '0.875rem', color: 'var(--auth-text-muted)' }}>
                 Page {page} of {totalPages}
@@ -217,9 +221,9 @@ export default function AdminBackupsPage() {
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="btn-admin-nav"
+                className="btn-admin-nav flex items-center gap-1"
               >
-                Next →
+                Next <ChevronRight size={14} />
               </button>
             </div>
           )}

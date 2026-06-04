@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { SlidersHorizontal } from 'lucide-react'
 
 export interface GalleryToolbarProps {
   searchPlaceholder?: string
@@ -37,11 +38,12 @@ export const GalleryToolbar: React.FC<GalleryToolbarProps> = ({
 
       {/* Small filters toggle button on mobile */}
       <button
-        className={`filter-toggle-btn ${filtersOpen ? 'active' : ''}`}
+        className={`filter-toggle-btn ${filtersOpen ? 'active' : ''} flex items-center justify-center gap-1.5`}
         onClick={() => setFiltersOpen(!filtersOpen)}
         aria-label="Toggle filters"
       >
-        🎛️ Filters
+        <SlidersHorizontal size={14} />
+        <span>Filters</span>
       </button>
 
       <div className={`gallery-filters-collapsible ${filtersOpen ? 'open' : ''}`}>
