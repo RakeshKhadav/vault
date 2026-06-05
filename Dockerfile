@@ -16,6 +16,8 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 # Compile TypeScript seed-admin script to JavaScript
 RUN npx tsc seed-admin.ts --noEmit false --target ES2020 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck true --outDir dist
+# Compile prisma.config.ts to JS in root directory
+RUN npx tsc prisma.config.ts --noEmit false --target ES2020 --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck true --outDir .
 
 # Stage 3: Run the application
 FROM node:20-alpine AS runner
@@ -41,6 +43,8 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
 # Copy Prisma migrations and schema so migrate deploy works in the container
 COPY --from=builder --chown=node:node /app/prisma ./prisma
+# Copy compiled prisma config so migrate deploy has access to it
+COPY --from=builder --chown=node:node /app/prisma.config.js ./prisma.config.js
 # Copy compiled seeding scripts and load-env
 COPY --from=builder --chown=node:node /app/dist ./dist
 
