@@ -9,8 +9,8 @@ npm ci
 echo "--- GENERATING PRISMA CLIENT ---"
 npx prisma generate
 
-echo "--- RUNNING PRISMA MIGRATIONS ---"
-npx prisma migrate deploy
+echo "--- SYNCING PRISMA SCHEMA ---"
+npx prisma db push --accept-data-loss
 
 echo "--- BUILDING NEXT.JS ---"
 npm run build
