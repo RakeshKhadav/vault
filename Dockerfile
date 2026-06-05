@@ -28,8 +28,8 @@ ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# Install system-level FFmpeg for media processing
-RUN apk add --no-cache ffmpeg
+# Install system-level FFmpeg and CA certificates for secure connections
+RUN apk add --no-cache ffmpeg ca-certificates
 
 # Install Prisma globally to execute migrations instantly at boot
 RUN npm install -g prisma@7.8.0
