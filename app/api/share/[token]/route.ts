@@ -3,7 +3,7 @@ import { db } from '../../../../lib/db'
 import jwt from 'jsonwebtoken'
 
 const JWT_SHARE_SECRET = (process.env.JWT_SHARE_SECRET || process.env.JWT_ACCESS_SECRET) as string
-if (!JWT_SHARE_SECRET) {
+if (!JWT_SHARE_SECRET && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error('JWT_SHARE_SECRET or JWT_ACCESS_SECRET environment variable must be configured')
 }
 

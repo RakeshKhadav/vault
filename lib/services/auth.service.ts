@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server'
 const JWT_ACCESS_SECRET: string = process.env.JWT_ACCESS_SECRET || ''
 const JWT_REFRESH_SECRET: string = process.env.JWT_REFRESH_SECRET || ''
 
-if (!JWT_ACCESS_SECRET || !JWT_REFRESH_SECRET) {
+if ((!JWT_ACCESS_SECRET || !JWT_REFRESH_SECRET) && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error('[Security] Critical Configuration Error: JWT_ACCESS_SECRET or JWT_REFRESH_SECRET environment variable is missing!')
 }
 

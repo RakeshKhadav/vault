@@ -2,11 +2,11 @@ import crypto from 'crypto'
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
 
-if (!ENCRYPTION_KEY) {
+if (!ENCRYPTION_KEY && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error('[Security] Critical Configuration Error: ENCRYPTION_KEY environment variable is missing!')
 }
 
-const DERIVED_KEY = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32)
+const DERIVED_KEY = crypto.scryptSync(ENCRYPTION_KEY || 'build-time-fallback-encryption-key-32', 'salt', 32)
 
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(12)
