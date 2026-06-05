@@ -5,6 +5,10 @@ import { MediaProcessor } from '../storage/media'
 import { BackupService } from './backup.service'
 import { decrypt } from '../storage/encryption'
 import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+import sharp from 'sharp'
 
 export class StorageService {
   static async uploadFile(userId: string, fileBuffer: Buffer, fileName: string, mimeType: string) {
@@ -401,15 +405,31 @@ export class StorageService {
     try {
       if (isImage) {
         const stream = await provider.download(credentialsStr, providerFileId)
-        // Convert stream to Buffer once so we can process it for both thumbnail and preview
-        const fileBuffer = await new Promise<Buffer>((resolve, reject) => {
-          const chunks: Buffer[] = []
-          stream.on('data', (chunk) => chunks.push(chunk))
-          stream.on('end', () => resolve(Buffer.concat(chunks)))
+        const tempImagePath = path.join(os.tmpdir(), `image-${crypto.randomUUID()}-${fileName}`)
+
+        // Write the download stream to a temp file on disk
+        await new Promise<void>((resolve, reject) => {
+          const writeStream = fs.createWriteStream(tempImagePath)
+          stream.pipe(writeStream)
+          writeStream.on('finish', () => resolve())
+          writeStream.on('error', (err) => reject(err))
           stream.on('error', (err) => reject(err))
         })
-        thumbnailBuffer = await MediaProcessor.generateImageThumbnail(fileBuffer)
-        previewBuffer = await MediaProcessor.generateImagePreview(fileBuffer)
+
+        try {
+          thumbnailBuffer = await sharp(tempImagePath)
+            .resize({ width: 300, withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toBuffer()
+
+          previewBuffer = await sharp(tempImagePath)
+            .resize({ width: 1920, withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toBuffer()
+        } finally {
+          // Always clean up the temp file
+          await fs.promises.unlink(tempImagePath).catch(() => {})
+        }
       } else if (isVideo) {
         const presignedUrl = await provider.generateViewUrl(credentialsStr, providerFileId)
         thumbnailBuffer = await MediaProcessor.generateVideoThumbnailFromUrl(presignedUrl, fileName)

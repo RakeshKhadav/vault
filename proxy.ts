@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback-access-secret'
-const encodedAccessKey = new TextEncoder().encode(JWT_ACCESS_SECRET)
-
 async function verifyToken(token: string) {
   try {
+    const secret = process.env.JWT_ACCESS_SECRET || 'fallback-access-secret'
+    const encodedAccessKey = new TextEncoder().encode(secret)
     const { payload } = await jwtVerify(token, encodedAccessKey)
     return payload
   } catch {

@@ -26,6 +26,7 @@ export default function UploadPage() {
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const activePollIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  const fileObjectsRef = useRef<Map<string, File>>(new Map())
 
   async function fetchHistory() {
     try {
@@ -66,6 +67,33 @@ export default function UploadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Queue side-effect processor: ensures sequential (one-by-one) upload execution
+  useEffect(() => {
+    const uploadingCount = queue.filter((item) => item.status === 'UPLOADING').length
+    if (uploadingCount < 1) {
+      // Find the oldest PENDING item (at the end of the queue array since we prepended)
+      const nextPending = [...queue]
+        .reverse()
+        .find((item) => item.status === 'PENDING')
+
+      if (nextPending) {
+        // Transition to UPLOADING
+        setQueue((prev) =>
+          prev.map((qItem) =>
+            qItem.id === nextPending.id ? { ...qItem, status: 'UPLOADING' as const, progress: 0 } : qItem
+          )
+        )
+
+        // Trigger upload
+        const file = fileObjectsRef.current.get(nextPending.id)
+        if (file) {
+          uploadFile(file, nextPending.id)
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue])
+
   function handleFileSelection(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return
     addFilesToQueue(Array.from(e.target.files))
@@ -93,8 +121,8 @@ export default function UploadPage() {
     const newItems = files.map((file) => {
       const id = `${file.name}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
       
-      // Perform upload immediately
-      uploadFile(file, id)
+      // Save File object in our ref Map for sequential processing
+      fileObjectsRef.current.set(id, file)
 
       return {
         id,
@@ -109,12 +137,6 @@ export default function UploadPage() {
   }
 
   async function uploadFile(file: File, queueId: string) {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === queueId ? { ...item, status: 'UPLOADING', progress: 0 } : item
-      )
-    )
-
     try {
       // 1. Get presigned upload URL
       const getUrlRes = await fetch('/api/files/upload-url', {
@@ -177,6 +199,7 @@ export default function UploadPage() {
               throw new Error(confirmData.message || 'Failed to confirm upload')
             }
           } catch (confirmErr: any) {
+            fileObjectsRef.current.delete(queueId)
             setQueue((prev) =>
               prev.map((item) =>
                 item.id === queueId
@@ -186,6 +209,7 @@ export default function UploadPage() {
             )
           }
         } else {
+          fileObjectsRef.current.delete(queueId)
           setQueue((prev) =>
             prev.map((item) =>
               item.id === queueId
@@ -197,6 +221,7 @@ export default function UploadPage() {
       }
 
       xhr.onerror = () => {
+        fileObjectsRef.current.delete(queueId)
         setQueue((prev) =>
           prev.map((item) =>
             item.id === queueId ? { ...item, status: 'FAILED', progress: 100, error: 'B2 connection failed' } : item
@@ -206,6 +231,7 @@ export default function UploadPage() {
 
       xhr.send(file)
     } catch (err: any) {
+      fileObjectsRef.current.delete(queueId)
       setQueue((prev) =>
         prev.map((item) =>
           item.id === queueId ? { ...item, status: 'FAILED', progress: 100, error: err.message || 'Upload failed' } : item
@@ -227,6 +253,7 @@ export default function UploadPage() {
           if (status === 'SUCCESS') {
             clearInterval(interval)
             activePollIntervals.current.delete(queueId)
+            fileObjectsRef.current.delete(queueId)
             setQueue((prev) =>
               prev.map((item) =>
                 item.id === queueId ? { ...item, status: 'SUCCESS', progress: 100 } : item
@@ -236,6 +263,7 @@ export default function UploadPage() {
           } else if (status === 'FAILED') {
             clearInterval(interval)
             activePollIntervals.current.delete(queueId)
+            fileObjectsRef.current.delete(queueId)
             setQueue((prev) =>
               prev.map((item) =>
                 item.id === queueId
@@ -264,6 +292,7 @@ export default function UploadPage() {
       if (attempts > 30) {
         clearInterval(interval)
         activePollIntervals.current.delete(queueId)
+        fileObjectsRef.current.delete(queueId)
         setQueue((prev) =>
           prev.map((item) =>
             item.id === queueId ? { ...item, status: 'FAILED', progress: 100, error: 'Polling timeout' } : item
