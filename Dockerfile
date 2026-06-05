@@ -32,7 +32,8 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN apk add --no-cache ffmpeg ca-certificates
 
 # Install Prisma globally to execute migrations instantly at boot
-RUN npm install -g prisma@7.8.0
+# Also install dotenv locally so prisma.config.js can resolve 'dotenv/config'
+RUN npm install -g prisma@7.8.0 && npm install dotenv
 
 # Create directories and set permissions
 RUN mkdir -p .next && chown node:node .next
