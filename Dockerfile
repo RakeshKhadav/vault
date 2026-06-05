@@ -29,6 +29,9 @@ ENV NEXT_TELEMETRY_DISABLED 1
 # Install system-level FFmpeg for media processing
 RUN apk add --no-cache ffmpeg
 
+# Install Prisma globally to execute migrations instantly at boot
+RUN npm install -g prisma@7.8.0
+
 # Create directories and set permissions
 RUN mkdir -p .next && chown node:node .next
 
